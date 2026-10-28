@@ -2,16 +2,16 @@
 
 CCA 從 1.0.1-astra 起分成兩種版本：
 
-- **普通版本**：這個倉庫。版本號是「數字＋重大規範化後綴」（見 [工作台與軟體更新](workbench.md)），目前是 1.0.1-astra。
+- **普通版本**：這個倉庫。版本號是「數字＋重大規範化後綴」（見 [工作台與軟體更新](workbench.md)），目前是 1.0.2-oss。
 - **特殊版本**：定位不同的產品路線，不是 CCA 的下一版，各自從 `0.0.1` 起算版本號。
 
 | 路線 | 中文名 | 狀態 | 定位 | 倉庫 |
 | --- | --- | --- | --- | --- |
-| 普通版本 | — | 1.0.1-astra | 持續前進的主線；版本號是數字加重大規範化後綴，每個後綴版本規範一組行為 | 這個倉庫 |
+| 普通版本 | — | 1.0.2-oss | 持續前進的主線；版本號是數字加重大規範化後綴，每個後綴版本規範一組行為 | 這個倉庫 |
 | Haiku | 俳句 | 0.0.2 | 只在 Android 使用，在手機上輕鬆編程（不是遠端操作電腦） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special) 的 `haiku` 分支 |
 | Sonnet | 十四行詩 | 開發與規劃中 | 以普通版本為基礎，加強審查與專業功能，並提供更開放的擴充插件 | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special) 的 `sonnet` 分支（只有說明） |
 | Opus | 大師巨作 | 開發與規劃中 | 同 Sonnet：以普通版本為基礎，加強審查與專業功能，並提供更開放的擴充插件 | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special) 的 `opus` 分支（只有說明） |
-| Fable | 寓言 | 0.0.3 | 為了您最艱難的任務而存在；閉源，免費提供 | 不公開 |
+| Fable | 寓言 | 0.0.5 | 為了您最艱難的任務而存在；閉源，免費提供 | 不公開 |
 
 Sonnet 與 Opus 目前沒有程式與安裝檔，兩者的差別與時程尚未定案。
 

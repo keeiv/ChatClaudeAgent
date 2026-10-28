@@ -198,7 +198,7 @@ struct AppearanceTestAccess {
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "app-server") return fakeCodex();
-    check(std::string(CCA_VERSION) == "1.0.1-astra", "astra is the last suffix of the ordinary line");
+    check(std::string(CCA_VERSION) == "1.0.2-oss", "the ordinary line continues with 1.0.2-oss");
     check(themeCatalogue().size() >= 16, "the catalogue holds the sixteen ordinary themes");
     for (const auto& theme : themeCatalogue().items()) {
         check(!themeById(theme["id"].str()).isNull(), "catalogue theme roundtrip");

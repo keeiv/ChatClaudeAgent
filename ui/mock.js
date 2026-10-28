@@ -715,6 +715,7 @@ window.MockBackend = (() => {
     if (m.type.startsWith('update.')) {
       if (m.type === 'update.auto') settings.updateAuto = m.auto;
       if (m.type === 'update.open') return;
+      if (m.type === 'update.haiku') { window.mockHaikuOpened = m.path; return; }
       if (m.type === 'update.install' && m.choice) { window.mockSwitch = m.choice; }
       // The mock never installs anything. #editions shows a special edition beside the ordinary one (or, in
       // #fable, the way back), so the choice dialogs can be exercised in a browser.

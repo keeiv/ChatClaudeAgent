@@ -97,6 +97,21 @@ bool App::handleUpdate(const Json& m) {
         if (openExternal) openExternal(updater::inboxDir());
         return true;
     }
+    if (type == "update.haiku") {
+        // Only a package the folder scan listed, and only once it matches its manifest.
+        std::wstring apk;
+        for (const auto& item : update_["android"].items())
+            if (item["path"].str() == m["path"].str()) apk = util::widen(item["path"].str());
+        std::string problem;
+        if (apk.empty()) problem = "資料夾裡沒有這個 Android 安裝包；請重新掃描";
+        else if (!openHaiku) problem = "手機模擬只在桌面版提供";
+        else if (updater::verifyAndroidPackage(apk, problem)) {
+            problem.clear();
+            openHaiku(apk, problem);
+        }
+        if (!problem.empty()) toast("error", "無法開啟 Haiku 手機模擬：" + problem);
+        return true;
+    }
     if (type == "update.source") {
         toast("info", "遠端更新尚未啟用；請把安裝包放進本機更新資料夾");
         report();

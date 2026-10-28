@@ -59,6 +59,18 @@ const { chromium } = require('playwright');
     await page.close();
 
 
+    // ---- the phone simulator: the Android package can be looked at on the PC, with the recommendation beside the button
+    page = await open('editions');
+    await page.evaluate(() => window.CCA_DEV.openSettings('updates'));
+    await page.getByRole('button', { name: '立即掃描', exact: true }).click();
+    const android = page.locator('[data-update-android]');
+    await android.waitFor();
+    check(await android.getByText('你已經有桌面版了，建議使用桌面版').isVisible(), 'the Android package says the desktop version is recommended');
+    await android.locator('[data-haiku-open]').click();
+    const opened = await sent(page, 'update.haiku');
+    check(opened && opened.path.endsWith('.apk'), 'the button asks the host to open that package in the phone simulator');
+    await page.close();
+
     check(errors.length === 0, 'no browser script errors: ' + errors.join('; '));
     console.log(`${checks.length} plugin and edition browser checks passed`);
   } finally { await browser.close(); }

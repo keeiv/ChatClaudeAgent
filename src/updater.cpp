@@ -11,6 +11,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 #include "process.hpp"
@@ -185,17 +186,282 @@ bool hashFile(const std::wstring& path, const std::string& expected) {
     std::string data;
     return boundedRead(path, data, kMaxBinary) && sha256(data) == expected;
 }
-std::wstring statusText = L"等待 CCA 儲存並關閉";
+// ---- Diagnosis. The broker is a separate process that outlives CCA, so what it finds is written down: a trace
+// (update.log) for the curious, and a short list of findings (result.json) a person can act on.
+std::string describeError(DWORD code) {
+    switch (code) {
+    case ERROR_ACCESS_DENIED:
+        return "權限不足，或防毒軟體正在掃描這個檔案";
+    case ERROR_SHARING_VIOLATION:
+    case ERROR_LOCK_VIOLATION:
+        return "檔案正被其他程式使用";
+    case ERROR_USER_MAPPED_FILE:
+        return "檔案正被其他程式載入";
+    case ERROR_DISK_FULL:
+    case ERROR_HANDLE_DISK_FULL:
+        return "磁碟空間不足";
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+        return "找不到檔案或資料夾";
+    case ERROR_WRITE_PROTECT:
+        return "磁碟或資料夾是唯讀的";
+    case ERROR_ALREADY_EXISTS:
+    case ERROR_FILE_EXISTS:
+        return "已有同名的檔案";
+    default:
+        return "系統錯誤碼 " + std::to_string(code);
+    }
+}
+// Only these are worth waiting for: a scanner or the shell lets go of a file within a few seconds.
+bool transient(DWORD code) {
+    return code == ERROR_ACCESS_DENIED || code == ERROR_SHARING_VIOLATION || code == ERROR_LOCK_VIOLATION ||
+           code == ERROR_USER_MAPPED_FILE;
+}
+std::string describeExit(DWORD code) {
+    char hex[16];
+    std::snprintf(hex, sizeof hex, "0x%08lX", (unsigned long)code);
+    if (code == 0xC0000135 || code == 0xC0000139 || code == 0xC0000142)
+        return std::string("新版無法載入必要的系統元件（") + hex +
+               "）；請確認已安裝 Microsoft Edge WebView2 與 Visual C++ 執行階段";
+    if (code == 0xC0000005) return std::string("新版啟動時當機（") + hex + "）";
+    return std::string("新版啟動後立即結束（") + hex + "）";
+}
+struct Trace {
+    std::string text;
+    ULONGLONG start = GetTickCount64();
+    void add(const std::string& line) {
+        text += "[+" + std::to_string(GetTickCount64() - start) + " ms] " + line + "\n";
+    }
+};
+Trace trace;
+Json findings = Json::array();
+void diagnose(const std::string& finding) {
+    findings.push(finding);
+    trace.add("診斷：" + finding);
+}
+
+// ---- Broker window. The two C strokes of the CCA mark close up as the update advances; a stepper below names where it
+// is.
+enum class Stage { Wait, Verify, Replace, Start, Done, Failed };
+Stage stage = Stage::Wait;
+Stage failedAt = Stage::Wait;
+ULONGLONG stageSince = 0;
+double shownProgress = 0.0;
+std::wstring statusText = L"等待 CCA 儲存並關閉", detailText;
 unsigned frame = 0;
 bool complete = false;
 bool animate = true;
 COLORREF windowBackground = RGB(19, 22, 26), windowText = RGB(233, 237, 241), windowSignal = RGB(124, 196, 255);
+constexpr COLORREF kFailure = RGB(224, 96, 96);
 COLORREF asColor(uint32_t rgb) {
     return RGB((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
+}
+COLORREF blend(COLORREF a, COLORREF b, double t) {
+    auto mix = [&](int x, int y) { return (int)(x + (y - x) * t); };
+    return RGB(mix(GetRValue(a), GetRValue(b)), mix(GetGValue(a), GetGValue(b)), mix(GetBValue(a), GetBValue(b)));
+}
+double ease(double t) {
+    t = std::clamp(t, 0.0, 1.0);
+    return 1 - std::pow(1 - t, 3);
+}
+// Progress of the current stage, 0..1; without animation every transition is instant.
+double stageTime(double milliseconds) {
+    return animate ? ease((double)(GetTickCount64() - stageSince) / milliseconds) : 1.0;
+}
+int stageIndex(Stage s) {
+    return s == Stage::Failed ? (int)failedAt : (int)s;
+}
+double stageTarget(Stage s) {
+    switch (s) {
+    case Stage::Wait:
+        return 0.08;
+    case Stage::Verify:
+        return 0.36;
+    case Stage::Replace:
+        return 0.62;
+    case Stage::Start:
+        return 0.86;
+    case Stage::Done:
+        return 1.0;
+    default:
+        return stageTarget(failedAt);  // a failed update stops the bar where it failed
+    }
+}
+void setStage(Stage next) {
+    if (stage == next) return;
+    if (next == Stage::Failed) failedAt = stage;
+    stage = next;
+    stageSince = GetTickCount64();
+}
+void setDetail(const std::wstring& text) {
+    detailText = text;
+}
+void fillPolygon(HDC dc, const POINT* points, int count, COLORREF color) {
+    HBRUSH brush = CreateSolidBrush(color);
+    auto old = SelectObject(dc, brush);
+    Polygon(dc, points, count);
+    SelectObject(dc, old);
+    DeleteObject(brush);
+}
+void outlinePolygon(HDC dc, const POINT* points, int count, COLORREF color, int width) {
+    HPEN pen = CreatePen(PS_SOLID, width, color);
+    auto oldPen = SelectObject(dc, pen), oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    Polygon(dc, points, count);
+    SelectObject(dc, oldBrush);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+}
+void paintBroker(HDC dc, const RECT& area) {
+    HBRUSH bg = CreateSolidBrush(windowBackground);
+    FillRect(dc, &area, bg);
+    DeleteObject(bg);
+    SetBkMode(dc, TRANSPARENT);
+    const int x = area.right / 2 - 64, y = 20;
+    // How far the strokes are apart, in pixels: they breathe while waiting and lock together as the new version goes
+    // in.
+    double gap = 4;
+    COLORREF markColor = windowText;
+    switch (stage) {
+    case Stage::Wait:
+        gap = 5 + (animate ? std::sin(frame * .065) * 4 : 0);
+        break;
+    case Stage::Verify:
+        gap = 5 - 3 * stageTime(500);
+        break;
+    case Stage::Replace:
+        gap = 2 - 2 * stageTime(380);
+        break;
+    case Stage::Start:
+        gap = 0;
+        break;
+    case Stage::Done:
+        gap = 0;
+        markColor = windowSignal;
+        break;
+    case Stage::Failed:
+        gap = 16 * stageTime(320) + (animate && GetTickCount64() - stageSince < 450 ? std::sin(frame * 1.3) * 3 : 0);
+        markColor = kFailure;
+        break;
+    }
+    static const POINT top[] = {{20, 3},  {8, 3},   {3, 8},  {3, 16}, {8, 21}, {20, 21},
+                                {20, 16}, {10, 16}, {8, 14}, {8, 10}, {10, 8}, {20, 8}};
+    POINT upper[12], lower[12];
+    for (int i = 0; i < 12; ++i) {
+        upper[i] = {x + top[i].x * 4 - (int)gap, y + top[i].y * 4};
+        lower[i] = {x + (32 - top[i].x) * 4 + (int)gap, y + (32 - top[i].y) * 4};
+    }
+    HPEN none = (HPEN)GetStockObject(NULL_PEN);
+    auto oldPen = SelectObject(dc, none);
+    fillPolygon(dc, upper, 12, markColor);
+    fillPolygon(dc, lower, 12, markColor);
+    SelectObject(dc, oldPen);
+    // A signal outline: one flash as the files are swapped, then a slow pulse while the new version starts.
+    if (stage == Stage::Replace && animate) {
+        const double flash = 1 - stageTime(520);
+        if (flash > 0.02) {
+            outlinePolygon(dc, upper, 12, blend(windowBackground, windowSignal, flash), 3);
+            outlinePolygon(dc, lower, 12, blend(windowBackground, windowSignal, flash), 3);
+        }
+    } else if (stage == Stage::Start) {
+        const double pulse = animate ? 0.5 + 0.5 * std::sin(frame * 0.18) : 1.0;
+        outlinePolygon(dc, upper, 12, blend(windowBackground, windowSignal, 0.35 + 0.65 * pulse), 3);
+        outlinePolygon(dc, lower, 12, blend(windowBackground, windowSignal, 0.35 + 0.65 * pulse), 3);
+    }
+    // The check mark is drawn stroke by stroke over the signal-coloured mark.
+    if (stage == Stage::Done) {
+        const double t = stageTime(480);
+        const POINT a{x + 36, y + 66}, b{x + 56, y + 86}, c{x + 94, y + 44};
+        const double first = std::min(1.0, t * 2.0), second = std::max(0.0, t * 2.0 - 1.0);
+        // A dark outline first, so the light stroke reads against the signal-coloured mark and its seam.
+        for (const auto& [width, color] : {std::pair{19, windowBackground}, std::pair{9, windowText}}) {
+            HPEN pen = CreatePen(PS_SOLID, width, color);
+            auto previous = SelectObject(dc, pen);
+            MoveToEx(dc, a.x, a.y, nullptr);
+            LineTo(dc, a.x + (int)((b.x - a.x) * first), a.y + (int)((b.y - a.y) * first));
+            if (second > 0) LineTo(dc, b.x + (int)((c.x - b.x) * second), b.y + (int)((c.y - b.y) * second));
+            SelectObject(dc, previous);
+            DeleteObject(pen);
+        }
+    }
+    // Progress bar
+    const int left = 40, right = area.right - 40, barTop = 172;
+    RECT track{left, barTop, right, barTop + 4};
+    HBRUSH trackBrush = CreateSolidBrush(blend(windowBackground, windowText, 0.16));
+    FillRect(dc, &track, trackBrush);
+    DeleteObject(trackBrush);
+    RECT fill{left, barTop, left + (int)((right - left) * shownProgress), barTop + 4};
+    HBRUSH fillBrush = CreateSolidBrush(stage == Stage::Failed ? kFailure : windowSignal);
+    FillRect(dc, &fill, fillBrush);
+    DeleteObject(fillBrush);
+    // Status and detail lines
+    SetTextColor(dc, stage == Stage::Failed ? kFailure : windowText);
+    HFONT big = CreateFontW(-18, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0,
+                            L"Segoe UI");
+    auto oldFont = SelectObject(dc, big);
+    RECT caption{20, 186, area.right - 20, 212};
+    DrawTextW(dc, statusText.c_str(), -1, &caption, DT_CENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    SelectObject(dc, oldFont);
+    DeleteObject(big);
+    if (!detailText.empty()) {
+        HFONT small = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
+                                  CLEARTYPE_QUALITY, 0, L"Segoe UI");
+        oldFont = SelectObject(dc, small);
+        SetTextColor(dc, blend(windowText, windowBackground, 0.38));
+        RECT detail{28, 214, area.right - 28, 250};
+        DrawTextW(dc, detailText.c_str(), -1, &detail, DT_CENTER | DT_WORDBREAK | DT_END_ELLIPSIS);
+        SelectObject(dc, oldFont);
+        DeleteObject(small);
+    }
+    // Stepper: five squares joined by a line that fills as the update advances.
+    static const wchar_t* labels[] = {L"等待關閉", L"核對", L"替換", L"啟動", L"完成"};
+    const int current = stageIndex(stage), nodeY = 262, firstX = 60, step = (area.right - 120) / 4;
+    HFONT tiny = CreateFontW(-12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0,
+                             L"Segoe UI");
+    oldFont = SelectObject(dc, tiny);
+    for (int i = 0; i < 5; ++i) {
+        const int nx = firstX + i * step;
+        if (i > 0) {
+            RECT line{nx - step + 8, nodeY + 4, nx - 8, nodeY + 6};
+            HBRUSH b = CreateSolidBrush(i <= current ? windowSignal : blend(windowBackground, windowText, 0.16));
+            FillRect(dc, &line, b);
+            DeleteObject(b);
+        }
+        const bool reached = i < current || (i == current && stage != Stage::Failed) || stage == Stage::Done;
+        RECT node{nx - 5, nodeY, nx + 5, nodeY + 10};
+        COLORREF color = (i == current && stage == Stage::Failed) ? kFailure
+                         : reached                                ? windowSignal
+                                                                  : blend(windowBackground, windowText, 0.3);
+        if (reached || (i == current && stage == Stage::Failed)) {
+            HBRUSH b = CreateSolidBrush(color);
+            FillRect(dc, &node, b);
+            DeleteObject(b);
+        } else {
+            HBRUSH b = CreateSolidBrush(color);
+            FrameRect(dc, &node, b);
+            DeleteObject(b);
+        }
+        // The active node sends out a square ring that fades as it grows.
+        if (i == current && !complete && stage != Stage::Failed && stage != Stage::Done && animate) {
+            const double t = (frame % 40) / 40.0;
+            const int r = 5 + (int)(t * 9);
+            RECT ring{nx - r, nodeY + 5 - r, nx + r, nodeY + 5 + r};
+            HBRUSH b = CreateSolidBrush(blend(windowBackground, windowSignal, 1.0 - t));
+            FrameRect(dc, &ring, b);
+            DeleteObject(b);
+        }
+        SetTextColor(dc, reached || i == current ? windowText : blend(windowText, windowBackground, 0.45));
+        RECT label{nx - step / 2, nodeY + 16, nx + step / 2, nodeY + 34};
+        DrawTextW(dc, labels[i], -1, &label, DT_CENTER | DT_SINGLELINE);
+    }
+    SelectObject(dc, oldFont);
+    DeleteObject(tiny);
 }
 LRESULT CALLBACK brokerWindow(HWND window, UINT message, WPARAM wp, LPARAM lp) {
     if (message == WM_TIMER) {
         if (animate) ++frame;
+        const double target = stageTarget(stage);
+        shownProgress = animate ? shownProgress + (target - shownProgress) * 0.10 : target;
+        if (std::abs(target - shownProgress) < 0.002) shownProgress = target;
         InvalidateRect(window, nullptr, FALSE);
         return 0;
     }
@@ -210,38 +476,7 @@ LRESULT CALLBACK brokerWindow(HWND window, UINT message, WPARAM wp, LPARAM lp) {
         GetClientRect(window, &area);
         HBITMAP bitmap = CreateCompatibleBitmap(target, area.right, area.bottom);
         auto oldBitmap = SelectObject(dc, bitmap);
-        HBRUSH bg = CreateSolidBrush(windowBackground);
-        FillRect(dc, &area, bg);
-        DeleteObject(bg);
-        SetBkMode(dc, TRANSPARENT);
-        HBRUSH mark = CreateSolidBrush(windowText);
-        auto oldBrush = SelectObject(dc, mark), oldPen = SelectObject(dc, GetStockObject(NULL_PEN));
-        // The two existing C strokes hand a single signal square to each other, without spinning text.
-        const int x = area.right / 2 - 64, y = 24;
-        const int motion = complete ? 0 : (int)(std::sin(frame * .065) * 5);
-        const POINT top[] = {{20, 3},  {8, 3},   {3, 8},  {3, 16}, {8, 21}, {20, 21},
-                             {20, 16}, {10, 16}, {8, 14}, {8, 10}, {10, 8}, {20, 8}};
-        POINT points[12];
-        for (int i = 0; i < 12; ++i) points[i] = {x + top[i].x * 4 - motion, y + top[i].y * 4};
-        Polygon(dc, points, 12);
-        for (int i = 0; i < 12; ++i) points[i] = {x + (32 - top[i].x) * 4 + motion, y + (32 - top[i].y) * 4};
-        Polygon(dc, points, 12);
-        SelectObject(dc, oldBrush);
-        DeleteObject(mark);
-        HBRUSH signal = CreateSolidBrush(windowSignal);
-        const int travel = complete ? 0 : (frame % 100);
-        RECT dot{x + 40 + travel / 2, y + 59, x + 46 + travel / 2, y + 65};
-        FillRect(dc, &dot, signal);
-        DeleteObject(signal);
-        SelectObject(dc, oldPen);
-        SetTextColor(dc, windowText);
-        HFONT font =
-            CreateFontW(-17, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, 0, 0, L"Segoe UI");
-        auto oldFont = SelectObject(dc, font);
-        RECT caption{20, 178, area.right - 20, 240};
-        DrawTextW(dc, statusText.c_str(), -1, &caption, DT_CENTER | DT_WORDBREAK);
-        SelectObject(dc, oldFont);
-        DeleteObject(font);
+        paintBroker(dc, area);
         BitBlt(target, 0, 0, area.right, area.bottom, dc, 0, 0, SRCCOPY);
         SelectObject(dc, oldBitmap);
         DeleteObject(bitmap);
@@ -259,6 +494,80 @@ void pump(HWND window, const std::wstring& text) {
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+}
+// Runs `operation` until it succeeds, waiting a little longer each time while the failure is one a scanner or the
+// shell will let go of; any other failure stops at once. The last error is left in `lastError`.
+template <class Operation>
+bool retrying(HWND window, const std::string& what, Operation operation, DWORD& lastError, int attempts = 6) {
+    for (int attempt = 1; attempt <= attempts; ++attempt) {
+        SetLastError(0);
+        if (operation()) {
+            if (attempt > 1) trace.add(what + "：第 " + std::to_string(attempt) + " 次嘗試成功");
+            setDetail(L"");
+            return true;
+        }
+        lastError = GetLastError();
+        trace.add(what + "失敗（第 " + std::to_string(attempt) + "/" + std::to_string(attempts) + " 次）：" +
+                  describeError(lastError));
+        if (!transient(lastError) || attempt == attempts) return false;
+        setDetail(util::widen("檔案暫時被占用（" + describeError(lastError) + "），第 " + std::to_string(attempt) +
+                              " 次重試"));
+        const auto until = GetTickCount64() + 300ull * attempt;
+        while (GetTickCount64() < until) {
+            pump(window, statusText);
+            Sleep(25);
+        }
+    }
+    return false;
+}
+// Checked while CCA is still open, so a problem that would only appear after it has closed is reported with CCA
+// running.
+std::string preflight(const std::wstring& exe, unsigned long long size) {
+    const auto probe = exe + L".cca-write-test";
+    HANDLE handle = CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return "CCA 所在的資料夾無法寫入（" + describeError(GetLastError()) +
+               "），更新無法替換執行檔；請把 CCA 放在可寫入的資料夾。";
+    CloseHandle(handle);
+    const unsigned long long need = size * 3 + (16ull << 20);
+    for (const auto& place : {exe.substr(0, exe.find_last_of(L"\\/")), util::localAppDataDir()}) {
+        ULARGE_INTEGER freeBytes{};
+        if (GetDiskFreeSpaceExW(place.c_str(), &freeBytes, nullptr, nullptr) && freeBytes.QuadPart < need)
+            return "磁碟空間不足：更新需要約 " + std::to_string(need >> 20) + " MB 的可用空間（" + util::narrow(place) +
+                   "）。";
+    }
+    return "";
+}
+// Staged updates of earlier runs pile up under the local updates folder; only the files the updater itself writes
+// are removed, and only from folders that have not been touched for two weeks.
+void pruneOldUpdates() {
+    const auto root = util::joinPath(util::localAppDataDir(), L"updates");
+    WIN32_FIND_DATAW entry{};
+    HANDLE find = FindFirstFileW((root + L"\\*").c_str(), &entry);
+    if (find == INVALID_HANDLE_VALUE) return;
+    FILETIME nowFile{};
+    GetSystemTimeAsFileTime(&nowFile);
+    ULARGE_INTEGER now{};
+    now.LowPart = nowFile.dwLowDateTime;
+    now.HighPart = nowFile.dwHighDateTime;
+    const unsigned long long fortnight = 14ull * 24 * 3600 * 10000000ull;
+    int seen = 0;
+    do {
+        const std::wstring name = entry.cFileName;
+        if (name == L"." || name == L".." || !(entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ||
+            (entry.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT))
+            continue;
+        ULARGE_INTEGER written{};
+        written.LowPart = entry.ftLastWriteTime.dwLowDateTime;
+        written.HighPart = entry.ftLastWriteTime.dwHighDateTime;
+        if (now.QuadPart < written.QuadPart || now.QuadPart - written.QuadPart < fortnight) continue;
+        const auto folder = util::joinPath(root, name);
+        for (const wchar_t* file : {L"payload.exe", L"broker.exe", L"plan.json", L"result.json", L"update.log"})
+            DeleteFileW(util::joinPath(folder, file).c_str());
+        RemoveDirectoryW(folder.c_str());
+    } while (++seen < 512 && FindNextFileW(find, &entry));
+    FindClose(find);
 }
 }  // namespace
 
@@ -487,6 +796,27 @@ Json inspectFolder(const std::wstring& dir, const std::string& current, const st
     result["source"] = util::narrow(best->path);
     return result;
 }
+bool verifyAndroidPackage(const std::wstring& apk, std::string& error) {
+    const auto slash = apk.find_last_of(L"\\/");
+    std::string raw, data;
+    if (slash == std::wstring::npos || !boundedRead(apk.substr(0, slash + 1) + L"manifest.json", raw, 65536)) {
+        error = "找不到這個安裝包的發行清單";
+        return false;
+    }
+    Json manifest = Json::parse(raw);
+    const Json& file = manifest["files"]["android"];
+    if (manifest["schema"].i64() != 1 || manifest["edition"].str() != "haiku" ||
+        file["name"].str() != util::narrow(apk.substr(slash + 1)) || !hexHash(file["sha256"].str())) {
+        error = "發行清單與安裝包不一致";
+        return false;
+    }
+    if (!boundedRead(apk, data, kMaxBinary) || (long long)data.size() != file["size"].i64() ||
+        sha256(data) != file["sha256"].str()) {
+        error = "安裝包的大小或 SHA-256 與發行清單不符";
+        return false;
+    }
+    return true;
+}
 Json prepare(const Json& checked, const std::wstring& exe) {
     if (!checked["ok"].boolean() || !checked["available"].boolean()) return failure("沒有可安裝的較新版本");
     const auto file = checked["file"];
@@ -495,6 +825,8 @@ Json prepare(const Json& checked, const std::wstring& exe) {
         sha256(data) != file["sha256"].str() || !pe64(data))
         return failure("更新檔下載或核對失敗，本機版本未變更");
     if (!hashFile(exe, checked["localHash"].str())) return failure("本機執行檔在檢查後改變，請重新檢查更新");
+    if (const auto why = preflight(exe, (unsigned long long)file["size"].i64()); !why.empty()) return failure(why);
+    pruneOldUpdates();
     const auto dir = util::joinPath(util::localAppDataDir(), L"updates\\" + util::widen(util::newId()));
     const auto payload = util::joinPath(dir, L"payload.exe"), helper = util::joinPath(dir, L"broker.exe");
     if (!util::ensureDir(dir) || !util::writeFileAtomic(payload, data))
@@ -584,13 +916,19 @@ int helperMain() {
     wc.hIcon = LoadIconW(wc.hInstance, MAKEINTRESOURCEW(101));
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     RegisterClassW(&wc);
-    HWND window = CreateWindowExW(WS_EX_TOPMOST, wc.lpszClassName, L"CCA · 更新", WS_OVERLAPPED | WS_CAPTION,
-                                  (GetSystemMetrics(SM_CXSCREEN) - 420) / 2, (GetSystemMetrics(SM_CYSCREEN) - 285) / 2,
-                                  420, 285, nullptr, nullptr, wc.hInstance, nullptr);
+    RECT frameRect{0, 0, 420, 312};
+    AdjustWindowRectEx(&frameRect, WS_OVERLAPPED | WS_CAPTION, FALSE, WS_EX_TOPMOST);
+    const int width = frameRect.right - frameRect.left, height = frameRect.bottom - frameRect.top;
+    HWND window =
+        CreateWindowExW(WS_EX_TOPMOST, wc.lpszClassName, L"CCA · 更新", WS_OVERLAPPED | WS_CAPTION,
+                        (GetSystemMetrics(SM_CXSCREEN) - width) / 2, (GetSystemMetrics(SM_CYSCREEN) - height) / 2,
+                        width, height, nullptr, nullptr, wc.hInstance, nullptr);
     if (!window) {
         CloseHandle(parent);
         return 5;
     }
+    stageSince = GetTickCount64();
+    trace.add("更新程式啟動：" + plan["flavor"].str() + " → " + plan["version"].str());
     ShowWindow(window, SW_SHOWNORMAL);
     SetTimer(window, 1, 25, nullptr);
     HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, util::widen(plan["event"].str()).c_str());
@@ -608,63 +946,146 @@ int helperMain() {
     }
     bool exited = WaitForSingleObject(parent, 0) == WAIT_OBJECT_0;
     CloseHandle(parent);
+    trace.add(exited ? "CCA 已關閉" : "CCA 沒有在 60 秒內關閉");
     const auto replacement = exe + L".cca-next",
                backup = exe + L".cca-previous-" + util::widen(plan["oldHash"].str().substr(0, 12));
+    const std::string oldHash = plan["oldHash"].str(), newHash = plan["newHash"].str();
     bool replaced = false;
     std::string error;
-    if (exited && hashFile(exe, plan["oldHash"].str()) && !util::fileExists(replacement) && !util::fileExists(backup) &&
-        CopyFileW(payload.c_str(), replacement.c_str(), TRUE)) {
-        pump(window, L"替換已核對的版本");
-        replaced = ReplaceFileW(exe.c_str(), replacement.c_str(), backup.c_str(), 0, nullptr, nullptr) != FALSE;
-        if (!replaced && hashFile(backup, plan["oldHash"].str())) {
-            if (hashFile(exe, plan["newHash"].str())) replaced = true;
-            else if (!hashFile(exe, plan["oldHash"].str()))
-                MoveFileExW(backup.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    DWORD lastError = 0;
+    if (!exited) {
+        diagnose("CCA 沒有在 60 秒內關閉，更新已取消，舊版沒有被更動。");
+    } else {
+        setStage(Stage::Verify);
+        pump(window, L"核對舊版與新版");
+        bool ready = hashFile(exe, oldHash);
+        if (!ready) diagnose("執行檔在更新開始後被改動，更新已取消。");
+        // What an interrupted earlier update left behind: clear it instead of refusing to start.
+        bool reuse = false;
+        if (ready && util::fileExists(replacement)) {
+            if (hashFile(replacement, newHash)) {
+                reuse = true;
+                trace.add("沿用上次留下、已核對的暫存檔");
+            } else if (retrying(
+                           window, "刪除上次留下的暫存檔", [&] { return DeleteFileW(replacement.c_str()) != FALSE; },
+                           lastError)) {
+                trace.add("已清除上次留下的暫存檔");
+            } else {
+                diagnose("上次更新留下的暫存檔無法刪除（" + describeError(lastError) + "）：" +
+                         util::narrow(replacement));
+                ready = false;
+            }
         }
-        if (replaced && !hashFile(exe, plan["newHash"].str())) {
-            replaced = false;
-            MoveFileExW(backup.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        if (ready && util::fileExists(backup)) {
+            // A backup identical to the installed file is redundant; anything else is only moved aside, never deleted.
+            const bool same = hashFile(backup, oldHash);
+            const bool cleared = retrying(
+                window, same ? "清除重複的舊版備份" : "移開未知的備份檔",
+                [&] {
+                    return same ? DeleteFileW(backup.c_str()) != FALSE
+                                : MoveFileExW(backup.c_str(), (backup + L".stale").c_str(),
+                                              MOVEFILE_REPLACE_EXISTING) != FALSE;
+                },
+                lastError);
+            if (!cleared) {
+                diagnose("上次留下的備份檔無法處理（" + describeError(lastError) + "）：" + util::narrow(backup));
+                ready = false;
+            }
+        }
+        if (ready) {
+            setStage(Stage::Replace);
+            pump(window, L"替換已核對的版本");
+            const bool copied =
+                reuse || retrying(
+                             window, "複製新版",
+                             [&] { return CopyFileW(payload.c_str(), replacement.c_str(), TRUE) != FALSE; }, lastError);
+            if (!copied) {
+                diagnose("無法複製新版（" + describeError(lastError) + "）；舊版沒有被更動。");
+            } else {
+                replaced = retrying(
+                    window, "替換執行檔",
+                    [&] {
+                        return ReplaceFileW(exe.c_str(), replacement.c_str(), backup.c_str(), 0, nullptr, nullptr) !=
+                               FALSE;
+                    },
+                    lastError);
+                if (!replaced && hashFile(backup, oldHash)) {
+                    if (hashFile(exe, newHash)) replaced = true;
+                    else if (!hashFile(exe, oldHash))
+                        MoveFileExW(backup.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+                }
+                if (replaced && !hashFile(exe, newHash)) {
+                    replaced = false;
+                    MoveFileExW(backup.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+                    diagnose("替換後的檔案核對不符，已改回舊版。");
+                }
+                if (!replaced) diagnose("替換執行檔失敗（" + describeError(lastError) + "），舊版已保留。");
+            }
         }
     }
+    const auto logPath = util::joinPath(dir, L"update.log");
+    DWORD holdExtra = 0;
+    {
+        wchar_t hold[16];
+        if (GetEnvironmentVariableW(L"CCA_TEST_UPDATE_HOLD_MS", hold, 16)) holdExtra = (DWORD)_wtoi(hold);
+    }
     if (replaced) {
+        setStage(Stage::Start);
         pump(window, L"正在重新開啟 CCA");
         auto eventName = util::widen("Local\\CCA.Update.Ready." + util::randomHex(16));
         HANDLE startup = CreateEventW(nullptr, TRUE, FALSE, eventName.c_str());
         HANDLE child =
             startup ? launchUpdatedApplication(exe, eventName, plan["flavor"].str() == "cli", &error) : nullptr;
         bool launched = false;
+        DWORD childExit = STILL_ACTIVE;
         const auto startupDeadline = GetTickCount64() + 30000;
         while (child && GetTickCount64() < startupDeadline) {
             if (WaitForSingleObject(startup, 0) == WAIT_OBJECT_0) {
                 launched = true;
                 break;
             }
-            if (WaitForSingleObject(child, 0) == WAIT_OBJECT_0) break;
+            if (WaitForSingleObject(child, 0) == WAIT_OBJECT_0) {
+                GetExitCodeProcess(child, &childExit);
+                break;
+            }
             pump(window, L"正在確認 CCA 已啟動");
             Sleep(25);
         }
         if (child) {
             if (!launched) {
+                if (childExit == STILL_ACTIVE) diagnose("新版在 30 秒內沒有回報啟動完成，已結束它並復原舊版。");
+                else diagnose(describeExit(childExit) + "，已復原舊版。");
                 TerminateProcess(child, 9);
                 WaitForSingleObject(child, 5000);
             }
             CloseHandle(child);
+        } else if (!launched) {
+            diagnose("無法啟動新版（" + (error.empty() ? std::string("沒有取得程序") : error) + "），已復原舊版。");
         }
         if (startup) CloseHandle(startup);
         if (!launched) {
             // Preserve both executables if rollback itself fails; never delete the last good copy.
+            setStage(Stage::Failed);
+            setDetail(util::widen(findings.size() ? findings.items().back().str() : std::string()));
             MoveFileExW(backup.c_str(), exe.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
             HANDLE restored = launchUpdatedApplication(exe, L"", plan["flavor"].str() == "cli", &error);
             if (restored) CloseHandle(restored);
-            pump(window, L"新版啟動失敗，已嘗試復原舊版");
+            pump(window, L"新版啟動失敗，已復原舊版");
         } else {
             // The retained .cca-previous file is the explicit recovery copy for this release.
+            setStage(Stage::Done);
             pump(window, L"更新完成");
         }
-        util::writeFileAtomic(util::joinPath(dir, L"result.json"),
-                              J({{"ok", launched}, {"version", plan["version"]}, {"error", error}}).dump());
+        trace.add(launched ? "完成：新版已啟動" : "失敗：已復原舊版");
+        util::writeFileAtomic(logPath, trace.text);
+        util::writeFileAtomic(util::joinPath(dir, L"result.json"), J({{"ok", launched},
+                                                                      {"version", plan["version"]},
+                                                                      {"error", error},
+                                                                      {"diagnosis", findings},
+                                                                      {"log", util::narrow(logPath)}})
+                                                                       .dump());
         complete = true;
-        const auto hold = GetTickCount64() + (launched ? 800 : 5000);
+        const auto hold = GetTickCount64() + (launched ? 900 : 5000) + holdExtra;
         while (GetTickCount64() < hold) {
             pump(window, statusText);
             Sleep(25);
@@ -674,10 +1095,30 @@ int helperMain() {
             HANDLE restored = launchUpdatedApplication(exe, L"", plan["flavor"].str() == "cli", &error);
             if (restored) CloseHandle(restored);
         }
-        util::writeFileAtomic(util::joinPath(dir, L"result.json"), failure("替換失敗，舊版已保留").dump());
+        setStage(Stage::Failed);
+        const std::string first = findings.size() ? findings.items().front().str() : "替換失敗，舊版已保留";
+        statusText = L"更新未完成，舊版已保留";
+        setDetail(util::widen(first));
+        trace.add("失敗：" + first);
+        util::writeFileAtomic(logPath, trace.text);
+        Json result = failure(first);
+        result["diagnosis"] = findings;
+        result["log"] = util::narrow(logPath);
+        util::writeFileAtomic(util::joinPath(dir, L"result.json"), result.dump());
         complete = true;
-        MessageBoxW(window, L"更新未完成。舊版執行檔仍保留；請檢查目錄權限或 .cca-previous 復原檔。", L"CCA 更新",
-                    MB_OK | MB_ICONINFORMATION);
+        pump(window, statusText);
+        if (!GetEnvironmentVariableW(L"CCA_TEST_UPDATE_SILENT", nullptr, 0)) {
+            std::wstring text = L"更新未完成。舊版執行檔仍保留。\n\n";
+            for (const auto& item : findings.items()) text += L"．" + util::widen(item.str()) + L"\n";
+            text += L"\n詳細記錄：" + logPath;
+            MessageBoxW(window, text.c_str(), L"CCA 更新", MB_OK | MB_ICONINFORMATION);
+        } else {
+            const auto hold = GetTickCount64() + 400 + holdExtra;
+            while (GetTickCount64() < hold) {
+                pump(window, statusText);
+                Sleep(25);
+            }
+        }
     }
     KillTimer(window, 1);
     DestroyWindow(window);

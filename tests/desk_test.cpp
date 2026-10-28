@@ -159,7 +159,11 @@ int wmain(int argc, wchar_t** argv) {
         if (result["available"].boolean()) result = updater::prepare(result, updater::executable());
         util::writeFileAtomic(probe + L".plan", result.dump());
         std::string error;
-        if (!result["ok"].boolean() || !updater::launch(result, error)) return 3;
+        if (!result["ok"].boolean() || !updater::launch(result, error)) {
+            std::fprintf(stderr, "update not launched: %s\n",
+                         (result["ok"].boolean() ? error : result["error"].str()).c_str());
+            return 3;
+        }
         return 0;
     }
     if (!probe.empty()) {

@@ -3,6 +3,7 @@
 // into the terminal's own scrollback once; only the live region is redrawn. App
 // still keeps the conversation history for persistence, handoffs and /show.
 #include <windows.h>
+
 #include <psapi.h>
 #include <shellapi.h>
 
@@ -56,13 +57,17 @@ Line operator+(Line a, const Line& b) {
     a.insert(a.end(), b.begin(), b.end());
     return a;
 }
-Line L(const std::string& text, Style st = Style()) { return tui::line(text, st); }
+Line L(const std::string& text, Style st = Style()) {
+    return tui::line(text, st);
+}
 std::string repeat(const std::string& s, int n) {
     std::string out;
     for (int i = 0; i < n; ++i) out += s;
     return out;
 }
-std::string toLowerAscii(std::string s) { return util::toLower(std::move(s)); }
+std::string toLowerAscii(std::string s) {
+    return util::toLower(std::move(s));
+}
 
 // ---- the input line
 
@@ -72,15 +77,35 @@ struct Editor {
 
     bool empty() const { return text.empty(); }
     std::string utf8() const { return tui::encode(text); }
-    void set(const std::string& s) { text = tui::decode(s); caret = text.size(); }
-    void clear() { text.clear(); caret = 0; }
+    void set(const std::string& s) {
+        text = tui::decode(s);
+        caret = text.size();
+    }
+    void clear() {
+        text.clear();
+        caret = 0;
+    }
     void insert(char32_t c) { text.insert(caret++, 1, c); }
-    void backspace() { if (caret > 0) text.erase(--caret, 1); }
-    void del() { if (caret < text.size()) text.erase(caret, 1); }
-    void left() { if (caret > 0) --caret; }
-    void right() { if (caret < text.size()) ++caret; }
-    size_t lineStart(size_t at) const { while (at > 0 && text[at - 1] != '\n') --at; return at; }
-    size_t lineEnd(size_t at) const { while (at < text.size() && text[at] != '\n') ++at; return at; }
+    void backspace() {
+        if (caret > 0) text.erase(--caret, 1);
+    }
+    void del() {
+        if (caret < text.size()) text.erase(caret, 1);
+    }
+    void left() {
+        if (caret > 0) --caret;
+    }
+    void right() {
+        if (caret < text.size()) ++caret;
+    }
+    size_t lineStart(size_t at) const {
+        while (at > 0 && text[at - 1] != '\n') --at;
+        return at;
+    }
+    size_t lineEnd(size_t at) const {
+        while (at < text.size() && text[at] != '\n') ++at;
+        return at;
+    }
     void home() { caret = lineStart(caret); }
     void end() { caret = lineEnd(caret); }
     bool onFirstLine() const { return lineStart(caret) == 0; }
@@ -97,7 +122,11 @@ struct Editor {
         size_t col = caret - lineStart(caret), ns = e + 1;
         caret = std::min(ns + col, lineEnd(ns));
     }
-    void killToStart() { size_t s = lineStart(caret); text.erase(s, caret - s); caret = s; }
+    void killToStart() {
+        size_t s = lineStart(caret);
+        text.erase(s, caret - s);
+        caret = s;
+    }
     void killToEnd() { text.erase(caret, lineEnd(caret) - caret); }
     void killWord() {
         size_t s = caret;
@@ -129,7 +158,8 @@ struct Picker {
         std::vector<int> out;
         std::string f = toLowerAscii(tui::encode(filter));
         for (int i = 0; i < (int)items.size(); ++i) {
-            if (f.empty() || toLowerAscii(items[i].label + " " + items[i].hint).find(f) != std::string::npos) out.push_back(i);
+            if (f.empty() || toLowerAscii(items[i].label + " " + items[i].hint).find(f) != std::string::npos)
+                out.push_back(i);
         }
         return out;
     }
@@ -248,8 +278,8 @@ const PermInfo kPerms[] = {
 };
 
 const char* kEfforts[][2] = {
-    {"minimal", "Minimal"}, {"low", "Low"},   {"medium", "Medium"}, {"high", "High"},
-    {"xhigh", "XHigh"},     {"max", "Max"},   {"ultra", "Ultra"},   {"ultracode", "Ultracode"},
+    {"minimal", "Minimal"}, {"low", "Low"}, {"medium", "Medium"}, {"high", "High"},
+    {"xhigh", "XHigh"},     {"max", "Max"}, {"ultra", "Ultra"},   {"ultracode", "Ultracode"},
 };
 
 std::string effortLabel(const std::string& e) {
@@ -304,7 +334,8 @@ private:
     void printHistory();
     void frame();
     std::vector<Line> buildLive(int cols, int rows, int* caretRow, int* caretCol);
-    std::vector<Line> box(const std::string& title, uint32_t c, const std::vector<Line>& body, const std::string& footer, int cols) const;
+    std::vector<Line> box(const std::string& title, uint32_t c, const std::vector<Line>& body,
+                          const std::string& footer, int cols) const;
     std::vector<Line> inputBox(int cols, int* caretRow, int* caretCol);
     std::vector<Line> pickerBox(int cols);
     std::vector<Line> widgetBox(int cols);
@@ -323,7 +354,10 @@ private:
     const Json* pendingBlock(std::string* msgId) const;
     void choose(const Json& block, const std::string& msgId, const std::string& choice);
     void answerQuestion(const Json& block, const std::string& msgId, int option);
-    void openPicker(Picker p) { picker_ = std::make_unique<Picker>(std::move(p)); dirty_ = true; }
+    void openPicker(Picker p) {
+        picker_ = std::make_unique<Picker>(std::move(p));
+        dirty_ = true;
+    }
     void ask(Ask a, const std::string& initial = "");
     void toast(const std::string& text, const std::string& level = "info");
 
@@ -468,10 +502,11 @@ void Cli::onHost(const std::string& json) {
                                                          : "登入：/gemini-login，完成後輸入 /status 重新檢查");
                 } else if (s["state"].str() == "missing") {
                     note(std::string(a) == "claude" ? "安裝：在 PowerShell 執行 irm https://claude.ai/install.ps1 | iex"
-                                                   : "安裝：先裝 Node.js，再執行 npm install -g @openai/codex");
+                                                    : "安裝：先裝 Node.js，再執行 npm install -g @openai/codex");
                 } else if (s["state"].str() == "loggedOut") {
-                    note(std::string(a) == "claude" ? "登入：在另一個終端機執行 claude auth login，完成後輸入 /status 重新檢查"
-                                                   : "登入：在另一個終端機執行 codex login，完成後輸入 /status 重新檢查");
+                    note(std::string(a) == "claude"
+                             ? "登入：在另一個終端機執行 claude auth login，完成後輸入 /status 重新檢查"
+                             : "登入：在另一個終端機執行 codex login，完成後輸入 /status 重新檢查");
                 }
             }
         }
@@ -494,7 +529,10 @@ void Cli::onHost(const std::string& json) {
                 doneMsgs_ = msgs_.size();
                 partial_ = 0;
                 for (size_t i = 0; i < msgs_.size(); ++i) {
-                    if (msgs_[i]["streaming"].boolean()) { doneMsgs_ = i; break; }
+                    if (msgs_[i]["streaming"].boolean()) {
+                        doneMsgs_ = i;
+                        break;
+                    }
                 }
             }
         }
@@ -507,7 +545,11 @@ void Cli::onHost(const std::string& json) {
         }
         bool found = false;
         for (auto& x : msgs_) {
-            if (x["id"].str() == msg["id"].str()) { x = msg; found = true; break; }
+            if (x["id"].str() == msg["id"].str()) {
+                x = msg;
+                found = true;
+                break;
+            }
         }
         if (!found) msgs_.push_back(msg);
     } else if (type == "convState") {
@@ -664,7 +706,7 @@ void Cli::onHost(const std::string& json) {
         updateChoices_ = m["choices"];
         for (const auto& apk : m["android"].items())
             note(apk["editionName"].str() + " " + apk["version"].str() + " 只能在 Android 安裝：把 " +
-                 apk["path"].str() + " 傳到手機開啟");
+                 apk["path"].str() + " 傳到手機開啟（想先在電腦上看看，請用桌面版的軟體更新）");
         if (!m["error"].str().empty()) toast(m["error"].str(), "error");
     } else if (type == "task.history") {
         for (const auto& item : m["items"].items()) {
@@ -725,7 +767,9 @@ const Json* Cli::conv(const std::string& id) const {
     return nullptr;
 }
 
-const Json& Cli::state() const { return states_[current_]; }
+const Json& Cli::state() const {
+    return states_[current_];
+}
 
 std::string Cli::name(const std::string& who) const {
     std::string n = util::trim(settings_["profiles"][who]["name"].str());
@@ -772,7 +816,8 @@ void Cli::commit(const std::vector<Line>& lines) {
 
 void Cli::note(const std::string& text, uint32_t c, const std::string& mark) {
     int cols = std::max(term::cols() - 1, 20);
-    commit(tui::wrap({{c == C::kMuted ? tui::muted() : tui::fg(c), text}}, cols, {{tui::fg(c), "  " + mark + " "}}, L("    ")));
+    commit(tui::wrap({{c == C::kMuted ? tui::muted() : tui::fg(c), text}}, cols, {{tui::fg(c), "  " + mark + " "}},
+                     L("    ")));
 }
 
 void Cli::printHeader() {
@@ -785,7 +830,9 @@ void Cli::printHeader() {
          {tui::muted(), "  CLI " + version_}});
     text.push_back({});
     auto who = [&](const std::string& a, const std::string& cli, const std::string& role) {
-        Line l = {{tui::fg(tui::agentColor(a)), "● "}, {tui::fg(tui::agentColor(a), true), name(a)}, {tui::muted(), "  " + cli + " · " + role}};
+        Line l = {{tui::fg(tui::agentColor(a)), "● "},
+                  {tui::fg(tui::agentColor(a), true), name(a)},
+                  {tui::muted(), "  " + cli + " · " + role}};
         if (const Json* p = persona(a)) {
             if ((*p)["name"].str() != name(a)) l.push_back({tui::faint(), " · 性格 " + (*p)["name"].str()});
         }
@@ -794,7 +841,9 @@ void Cli::printHeader() {
     text.push_back(who("claude", "Claude Code", "可切換主刀"));
     text.push_back(who("codex", "Codex", "可接手工作"));
     text.push_back(who("gemini", "Gemini CLI", "多代理審查"));
-    text.push_back({{tui::muted(), "你是 "}, {Style(), name("user")}, {tui::muted(), " · 資料在 " + shortPath(util::narrow(util::appDataDir()))}});
+    text.push_back({{tui::muted(), "你是 "},
+                    {Style(), name("user")},
+                    {tui::muted(), " · 資料在 " + shortPath(util::narrow(util::appDataDir()))}});
     text.push_back({{tui::faint(), "/help 看指令 · Esc 中斷 · Ctrl+C 離開"}});
     std::vector<Line> out;
     out.push_back({});
@@ -815,7 +864,10 @@ void Cli::printHistory() {
     bool group = (*c)["kind"].str() == "group";
     std::string title = (group ? "# " : "@ ") + convTitle(*c);
     int side = std::max(2, (cols - tui::width(title) - 2) / 2);
-    std::vector<Line> out = {{}, {{tui::faint(), repeat("─", side) + " "}, {tui::fg(C::kBrand, true), title}, {tui::faint(), " " + repeat("─", side)}}};
+    std::vector<Line> out = {{},
+                             {{tui::faint(), repeat("─", side) + " "},
+                              {tui::fg(C::kBrand, true), title},
+                              {tui::faint(), " " + repeat("─", side)}}};
     std::string cwd = (*c)["cwd"].str();
     Line where = {{tui::muted(), "  資料夾 "}, {Style(), cwd.empty() ? "還沒選" : shortPath(cwd)}};
     if (cwd.empty()) where.push_back({tui::muted(), "（/cd 路徑，或 /cd . 用目前資料夾）"});
@@ -846,19 +898,23 @@ void Cli::printHistory() {
     if (cwd.empty() && !here.empty() && util::projectFolderProblem(launchDir_).empty()) {
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"cwd", here}})}}));
         note("專案資料夾設為目前的資料夾 " + shortPath(here), C::kBrand, "✓");
-    } else if (!cwd.empty() && toLowerAscii(cwd) != toLowerAscii(here) && util::projectFolderProblem(launchDir_).empty()) {
+    } else if (!cwd.empty() && toLowerAscii(cwd) != toLowerAscii(here) &&
+               util::projectFolderProblem(launchDir_).empty()) {
         note("你在 " + shortPath(here) + " 開啟，這個對話用的是 " + shortPath(cwd) + "。要換成目前資料夾請輸入 /cd .");
     }
 }
 
-std::vector<Line> Cli::box(const std::string& title, uint32_t c, const std::vector<Line>& body, const std::string& footer, int cols) const {
+std::vector<Line> Cli::box(const std::string& title, uint32_t c, const std::vector<Line>& body,
+                           const std::string& footer, int cols) const {
     Style b = tui::fg(c);
     std::vector<Line> out;
     auto edge = [&](const char* l, const char* r, const std::string& label, bool muted) {
         if (label.empty()) return Line{{b, l + repeat("─", cols - 2) + r}};
         std::string lab = tui::clipText(label, cols - 6);
         int rest = cols - 4 - tui::width(lab) - 1;
-        return Line{{b, std::string(l) + "─ "}, {muted ? tui::muted() : tui::fg(c, true), lab}, {b, " " + repeat("─", std::max(rest, 0)) + r}};
+        return Line{{b, std::string(l) + "─ "},
+                    {muted ? tui::muted() : tui::fg(c, true), lab},
+                    {b, " " + repeat("─", std::max(rest, 0)) + r}};
     };
     out.push_back(edge("╭", "╮", title, false));
     for (const auto& l : body) out.push_back(Line{{b, "│ "}} + tui::padTo(l, cols - 4) + Line{{b, " │"}});
@@ -872,23 +928,45 @@ std::vector<Line> Cli::inputBox(int cols, int* caretRow, int* caretCol) {
     std::vector<std::u32string> rows(1);
     int row = 0, col = 0, cr = 0, cc = 0;
     for (size_t i = 0; i <= ed_.text.size(); ++i) {
-        if (i == ed_.caret) { cr = row; cc = col; }
+        if (i == ed_.caret) {
+            cr = row;
+            cc = col;
+        }
         if (i == ed_.text.size()) break;
         char32_t ch = ed_.text[i];
-        if (ch == '\n') { rows.emplace_back(); ++row; col = 0; continue; }
+        if (ch == '\n') {
+            rows.emplace_back();
+            ++row;
+            col = 0;
+            continue;
+        }
         int w = tui::charWidth(ch);
-        if (col + w > textW) { rows.emplace_back(); ++row; col = 0; if (i == ed_.caret) { cr = row; cc = 0; } }
+        if (col + w > textW) {
+            rows.emplace_back();
+            ++row;
+            col = 0;
+            if (i == ed_.caret) {
+                cr = row;
+                cc = 0;
+            }
+        }
         rows[row] += ch;
         col += w;
     }
-    if (cc >= textW) { cc = 0; ++cr; if (cr >= (int)rows.size()) rows.emplace_back(); }
+    if (cc >= textW) {
+        cc = 0;
+        ++cr;
+        if (cr >= (int)rows.size()) rows.emplace_back();
+    }
     std::string placeholder;
     if (ask_) placeholder = ask_->placeholder;
     else if (const Json* c = conv()) {
         bool group = (*c)["kind"].str() == "group";
         if (state()["group"]["active"].boolean()) placeholder = "協作進行中，可以先打字，或 /stop 停止";
         else if (running()) placeholder = "等 " + convTitle(*c) + " 回覆中，可以先打字";
-        else placeholder = group ? "給 " + name("claude") + " 和 " + name("codex") + " 的指令" : "傳訊息給 " + name((*c)["kind"].str());
+        else
+            placeholder = group ? "給 " + name("claude") + " 和 " + name("codex") + " 的指令"
+                                : "傳訊息給 " + name((*c)["kind"].str());
     }
     for (size_t r = 0; r < rows.size(); ++r) {
         Line l = r == 0 ? Line{{tui::fg(C::kBrand, true), "› "}} : L("  ");
@@ -904,7 +982,9 @@ std::vector<Line> Cli::inputBox(int cols, int* caretRow, int* caretCol) {
         body = std::vector<Line>(body.begin() + top, body.begin() + top + kMaxRows);
     }
     std::string title = ask_ ? ask_->title : "";
-    std::string footer = ask_ ? (ask_->allowEmpty ? "Enter 確定（可以留空） · Shift+Enter 換行 · Esc 取消" : "Enter 確定 · Shift+Enter 換行 · Esc 取消") : "";
+    std::string footer = ask_ ? (ask_->allowEmpty ? "Enter 確定（可以留空） · Shift+Enter 換行 · Esc 取消"
+                                                  : "Enter 確定 · Shift+Enter 換行 · Esc 取消")
+                              : "";
     std::vector<Line> out = box(title, ask_ ? C::kWarn : C::kBrand, body, footer, cols);
     *caretRow = 1 + (cr - top);
     *caretCol = 2 + 2 + cc;
@@ -977,17 +1057,22 @@ std::vector<Line> Cli::widgetBox(int cols) {
     if ((*b)["type"].str() == "approval") {
         if (!(*b)["command"].str().empty()) {
             auto lines = util::splitLines((*b)["command"].str());
-            for (size_t i = 0; i < lines.size() && i < 6; ++i) add({{tui::fg(C::kCode), lines[i]}}, {{tui::faint(), i ? "  " : "$ "}});
+            for (size_t i = 0; i < lines.size() && i < 6; ++i)
+                add({{tui::fg(C::kCode), lines[i]}}, {{tui::faint(), i ? "  " : "$ "}});
             if (lines.size() > 6) body.push_back(L("  …（共 " + std::to_string(lines.size()) + " 行）", tui::faint()));
             if (!(*b)["cwd"].str().empty()) add({{tui::muted(), "在 " + (*b)["cwd"].str()}});
         }
         if (!(*b)["path"].str().empty()) {
             Line l = {{tui::fg(C::kCode), (*b)["path"].str()}};
-            if ((*b).has("added")) l = l + Line{{tui::fg(C::kOk), "  +" + std::to_string((*b)["added"].i64())}, {tui::fg(C::kErr), " −" + std::to_string((*b)["removed"].i64())}};
+            if ((*b).has("added"))
+                l = l + Line{{tui::fg(C::kOk), "  +" + std::to_string((*b)["added"].i64())},
+                             {tui::fg(C::kErr), " −" + std::to_string((*b)["removed"].i64())}};
             add(l);
         }
         for (const auto& f : (*b)["files"].items()) {
-            add({{tui::fg(C::kCode), f["path"].str()}, {tui::fg(C::kOk), "  +" + std::to_string(f["added"].i64())}, {tui::fg(C::kErr), " −" + std::to_string(f["removed"].i64())}});
+            add({{tui::fg(C::kCode), f["path"].str()},
+                 {tui::fg(C::kOk), "  +" + std::to_string(f["added"].i64())},
+                 {tui::fg(C::kErr), " −" + std::to_string(f["removed"].i64())}});
         }
         if (!(*b)["diff"].str().empty()) {
             auto lines = util::splitLines((*b)["diff"].str());
@@ -995,7 +1080,9 @@ std::vector<Line> Cli::widgetBox(int cols) {
             for (const auto& l : lines) {
                 if (util::startsWith(l, "@@")) continue;
                 if (++shown > 8) break;
-                Style st = util::startsWith(l, "+") ? tui::fg(C::kOk) : util::startsWith(l, "-") ? tui::fg(C::kErr) : tui::muted();
+                Style st = util::startsWith(l, "+")   ? tui::fg(C::kOk)
+                           : util::startsWith(l, "-") ? tui::fg(C::kErr)
+                                                      : tui::muted();
                 body.push_back({{st, tui::clipText(l, inner)}});
             }
             if ((int)lines.size() > shown + 1) body.push_back(L("…（/show 看完整的 diff）", tui::faint()));
@@ -1005,10 +1092,12 @@ std::vector<Line> Cli::widgetBox(int cols) {
             for (size_t i = 0; i < md.size() && i < 14; ++i) body.push_back(md[i].line);
             if (md.size() > 14) body.push_back(L("…（/show 看完整的計畫）", tui::faint()));
         }
-        if (!(*b)["detail"].str().empty() && (*b)["command"].str().empty()) add({{tui::fg(C::kCode), (*b)["detail"].str()}});
+        if (!(*b)["detail"].str().empty() && (*b)["command"].str().empty())
+            add({{tui::fg(C::kCode), (*b)["detail"].str()}});
         if (!(*b)["reason"].str().empty()) add({{tui::muted(), "原因：" + (*b)["reason"].str()}});
         if (!(*b)["note"].str().empty()) add({{tui::muted(), (*b)["note"].str()}});
-        if (!(*b)["blockedPath"].str().empty()) add({{tui::fg(C::kWarn), "涉及專案外的路徑：" + (*b)["blockedPath"].str()}});
+        if (!(*b)["blockedPath"].str().empty())
+            add({{tui::fg(C::kWarn), "涉及專案外的路徑：" + (*b)["blockedPath"].str()}});
         body.push_back({});
         const auto& opts = (*b)["options"].items();
         widgetSel_ = std::clamp(widgetSel_, 0, std::max(0, (int)opts.size() - 1));
@@ -1017,7 +1106,8 @@ std::vector<Line> Cli::widgetBox(int cols) {
             std::string style = opts[i]["style"].str();
             uint32_t c = style == "danger" ? C::kErr : style == "primary" || style == "success" ? C::kOk : 0;
             body.push_back({{sel ? tui::fg(C::kBrand, true) : Style(), sel ? "❯ " : "  "},
-                            {sel ? tui::fg(c ? c : C::kBrand, true) : Style(), std::to_string(i + 1) + ". " + opts[i]["label"].str()}});
+                            {sel ? tui::fg(c ? c : C::kBrand, true) : Style(),
+                             std::to_string(i + 1) + ". " + opts[i]["label"].str()}});
         }
         return box(tui::withAgentName((*b)["title"].str("權限請求"), names), C::kWarn, body,
                    "↑↓ 或數字選擇 · Enter 確定 · Esc 拒絕", cols);
@@ -1053,8 +1143,11 @@ std::vector<Line> Cli::widgetBox(int cols) {
         }
         for (auto& w : tui::wrap(l, inner, {}, L("     "))) body.push_back(w);
     }
-    std::string title = name(agent) + " 想問你" + (qs.size() > 1 ? "（" + std::to_string(questionAt_ + 1) + "/" + std::to_string(qs.size()) + "）" : "");
-    return box(title, C::kBrand, body, q["multiSelect"].boolean() ? "Enter 勾選 · 選「完成選擇」送出" : "↑↓ 或數字選擇 · Enter 確定", cols);
+    std::string title =
+        name(agent) + " 想問你" +
+        (qs.size() > 1 ? "（" + std::to_string(questionAt_ + 1) + "/" + std::to_string(qs.size()) + "）" : "");
+    return box(title, C::kBrand, body,
+               q["multiSelect"].boolean() ? "Enter 勾選 · 選「完成選擇」送出" : "↑↓ 或數字選擇 · Enter 確定", cols);
 }
 
 std::vector<Line> Cli::statusLines(int cols) {
@@ -1065,27 +1158,34 @@ std::vector<Line> Cli::statusLines(int cols) {
     if (st["preparing"].str() == "guard") {
         out.push_back({{tui::fg(C::kBrand), spin + " "}, {tui::muted(), "正在執行測試，檢查審查者的修改"}});
     } else if (!st["preparing"].str().empty()) {
-        out.push_back({{tui::fg(C::kBrand), spin + " "}, {tui::muted(), "正在建立檢查點，完成後 " + name(st["preparing"].str()) + " 就會開始"}});
+        out.push_back({{tui::fg(C::kBrand), spin + " "},
+                       {tui::muted(), "正在建立檢查點，完成後 " + name(st["preparing"].str()) + " 就會開始"}});
     }
     for (const auto& t : st["typing"].items()) {
         std::string who = t.str();
         const Json* msg = nullptr;
         for (auto it = msgs_.rbegin(); it != msgs_.rend(); ++it) {
-            if ((*it)["author"].str() == who && (*it)["streaming"].boolean()) { msg = &*it; break; }
+            if ((*it)["author"].str() == who && (*it)["streaming"].boolean()) {
+                msg = &*it;
+                break;
+            }
         }
         std::string action = who == "local1" || who == "local2" ? "唯讀審查中" : "回覆中";
         if (st["thinking"][who].boolean()) action = "思考中";
         if (msg) {
             for (const auto& b : (*msg)["blocks"].items()) {
-                if (b["type"].str() == "tool" && b["status"].str() == "running") action = b["title"].str("使用工具") + "中";
-                if ((b["type"].str() == "approval" || b["type"].str() == "question") && b["state"].str() == "pending") action = "等你決定";
+                if (b["type"].str() == "tool" && b["status"].str() == "running")
+                    action = b["title"].str("使用工具") + "中";
+                if ((b["type"].str() == "approval" || b["type"].str() == "question") && b["state"].str() == "pending")
+                    action = "等你決定";
             }
         }
         uint32_t c = tui::agentColor(who);
         Line l = {{tui::fg(c), spin + " "}, {tui::fg(c, true), name(who)}, {Style(), " " + action + "…"}};
         long long elapsed = msg ? now - (*msg)["ts"].i64() : 0;
         if (msg && (*msg)["ts"].i64() > 0 && elapsed >= 1000) {
-            l.push_back({tui::muted(), "  " + (elapsed < 60000 ? std::to_string(elapsed / 1000) + " 秒" : tui::duration(elapsed))});
+            l.push_back({tui::muted(),
+                         "  " + (elapsed < 60000 ? std::to_string(elapsed / 1000) + " 秒" : tui::duration(elapsed))});
         }
         if (msg && (*msg)["retry"].isObject()) l.push_back({tui::fg(C::kWarn), "  連線不穩，重試中"});
         l.push_back({tui::faint(), " · Esc 中斷"});
@@ -1103,9 +1203,12 @@ std::vector<Line> Cli::statusLines(int cols) {
                           cols));
         } else if (settings_["visual"]["mode"].str("auto") == "off") {
             int files = (int)g["files"].fields().size();
-            Line l = {{tui::fg(C::kBrand), "⇄ 協作"}, {tui::muted(), " 第 " + std::to_string(g["round"].i64()) + "/" + std::to_string(g["maxRounds"].i64()) + " 輪"}};
+            Line l = {{tui::fg(C::kBrand), "⇄ 協作"},
+                      {tui::muted(),
+                       " 第 " + std::to_string(g["round"].i64()) + "/" + std::to_string(g["maxRounds"].i64()) + " 輪"}};
             if (files) l.push_back({tui::muted(), " · " + std::to_string(files) + " 個檔案有變更"});
-            if (!g["localActive"].str().empty()) l.push_back({tui::muted(), " · " + name(g["localActive"].str()) + " 唯讀審查中"});
+            if (!g["localActive"].str().empty())
+                l.push_back({tui::muted(), " · " + name(g["localActive"].str()) + " 唯讀審查中"});
             out.push_back(tui::clip(l, cols));
         }
     }
@@ -1116,15 +1219,22 @@ std::vector<Line> Cli::statusLines(int cols) {
             if (b["type"].str() != "todo") continue;
             int done = 0;
             for (const auto& x : b["items"].items()) done += x["status"].str() == "completed";
-            out.push_back({{tui::faint(), "  ⎿ "}, {Style(), "待辦 "}, {tui::muted(), std::to_string(done) + "/" + std::to_string(b["items"].size())}});
+            out.push_back({{tui::faint(), "  ⎿ "},
+                           {Style(), "待辦 "},
+                           {tui::muted(), std::to_string(done) + "/" + std::to_string(b["items"].size())}});
             int shown = 0;
             for (const auto& x : b["items"].items()) {
                 if (++shown > 6) break;
                 std::string s = x["status"].str();
                 Style st2 = s == "completed" ? tui::muted() : s == "inProgress" ? tui::fg(C::kBrand, true) : Style();
                 if (s == "completed") st2.strike = true;
-                out.push_back(tui::clip({{tui::faint(), "    "}, {s == "inProgress" ? tui::fg(C::kBrand) : tui::muted(), s == "completed" ? "☒ " : s == "inProgress" ? "◐ " : "☐ "},
-                                         {st2, x["text"].str()}}, cols));
+                out.push_back(
+                    tui::clip({{tui::faint(), "    "},
+                               {s == "inProgress" ? tui::fg(C::kBrand) : tui::muted(), s == "completed"    ? "☒ "
+                                                                                       : s == "inProgress" ? "◐ "
+                                                                                                           : "☐ "},
+                               {st2, x["text"].str()}},
+                              cols));
             }
         }
         break;
@@ -1137,13 +1247,18 @@ Line Cli::footerLine(int cols) {
     Line right = {{tui::faint(), "/help"}};
     if (const Json* c = conv()) {
         bool group = (*c)["kind"].str() == "group";
-        l.push_back({tui::fg(group ? C::kBrand : tui::agentColor((*c)["kind"].str()), true), (group ? "# " : "@ ") + convTitle(*c)});
-        l.push_back({tui::fg(C::kBrand), " · 主刀 " + name((*c)["kind"].str() == "codex" ? "codex" : (*c)["lead"].str("claude"))});
+        l.push_back({tui::fg(group ? C::kBrand : tui::agentColor((*c)["kind"].str()), true),
+                     (group ? "# " : "@ ") + convTitle(*c)});
+        l.push_back({tui::fg(C::kBrand),
+                     " · 主刀 " + name((*c)["kind"].str() == "codex" ? "codex" : (*c)["lead"].str("claude"))});
         std::string cwd = (*c)["cwd"].str();
-        if (!(*c)["daily"].boolean() || group) l.push_back({tui::muted(), " · " + (cwd.empty() ? std::string("沒有專案資料夾") : shortPath(cwd))});
+        if (!(*c)["daily"].boolean() || group)
+            l.push_back({tui::muted(), " · " + (cwd.empty() ? std::string("沒有專案資料夾") : shortPath(cwd))});
         std::string perm = (*c)["permission"].str();
         for (const auto& p : kPerms) {
-            if (perm == p.id) right = {{perm == "bypass" ? tui::fg(C::kErr, true) : tui::muted(), p.label}, {tui::faint(), " · /help"}};
+            if (perm == p.id)
+                right = {{perm == "bypass" ? tui::fg(C::kErr, true) : tui::muted(), p.label},
+                         {tui::faint(), " · /help"}};
         }
         if ((*c)["daily"].boolean() && !group) l.push_back({tui::fg(C::kBrand), " · 日常模式"});
     }
@@ -1161,7 +1276,12 @@ std::vector<Line> Cli::buildLive(int cols, int rows, int* caretRow, int* caretCo
     for (auto& l : statusLines(cols)) bottom.push_back(l);
     if (!toast_.empty() && util::nowMs() < toastUntil_) {
         uint32_t c = toastLevel_ == "error" ? C::kErr : toastLevel_ == "ok" ? C::kOk : C::kBrand;
-        for (auto& l : tui::wrap({{tui::fg(c), toast_}}, cols, {{tui::fg(c), toastLevel_ == "error" ? "✗ " : toastLevel_ == "ok" ? "✓ " : "· "}}, L("  "))) bottom.push_back(l);
+        for (auto& l : tui::wrap({{tui::fg(c), toast_}}, cols,
+                                 {{tui::fg(c), toastLevel_ == "error" ? "✗ "
+                                               : toastLevel_ == "ok"  ? "✓ "
+                                                                      : "· "}},
+                                 L("  ")))
+            bottom.push_back(l);
     }
     int cr = -1, cc = 0;
     std::vector<Line> input;
@@ -1176,7 +1296,8 @@ std::vector<Line> Cli::buildLive(int cols, int rows, int* caretRow, int* caretCo
             for (int i = top; i < (int)ms.size() && i < top + 7; ++i) {
                 bool sel = i == popupSel_;
                 std::string head = std::string(ms[i]->name) + (*ms[i]->args ? std::string(" ") + ms[i]->args : "");
-                Line l = {{sel ? tui::fg(C::kBrand, true) : tui::muted(), sel ? "  ❯ " : "    "}, {sel ? tui::fg(C::kBrand, true) : Style(), head}};
+                Line l = {{sel ? tui::fg(C::kBrand, true) : tui::muted(), sel ? "  ❯ " : "    "},
+                          {sel ? tui::fg(C::kBrand, true) : Style(), head}};
                 l.push_back({Style(), std::string(std::max(1, 22 - tui::width(head)), ' ')});
                 l.push_back({tui::muted(), ms[i]->desc});
                 input.push_back(tui::clip(l, cols));
@@ -1219,7 +1340,8 @@ std::vector<Line> Cli::buildLive(int cols, int rows, int* caretRow, int* caretCo
     if ((int)pending.size() > room) {
         size_t hidden = pending.size() - room + (room > 0 ? 1 : 0);
         std::vector<Line> cut;
-        if (room > 0) cut.push_back(L("  ⋮ 上面還有 " + std::to_string(hidden) + " 行，完成後會整段印出", tui::faint()));
+        if (room > 0)
+            cut.push_back(L("  ⋮ 上面還有 " + std::to_string(hidden) + " 行，完成後會整段印出", tui::faint()));
         for (size_t k = hidden; k < pending.size(); ++k) cut.push_back(pending[k]);
         pending.swap(cut);
     }
@@ -1338,58 +1460,136 @@ void Cli::handleKey(const term::Key& k) {
     dirty_ = true;
     if (k.code == K::Resize) return;
     if (k.code == K::Char && k.ctrl && k.ch == 'c') {
-        if (picker_) { auto cancel = picker_->onCancel; picker_.reset(); if (cancel) cancel(); return; }
-        if (ask_) { auto cancel = ask_->cancel; ask_.reset(); ed_.set(askDraft_); if (cancel) cancel(); return; }
-        if (!ed_.empty()) { ed_.clear(); return; }
-        if (running()) { ui(J({{"type", "conv.stop"}, {"id", current_}})); toast("已要求停止"); return; }
+        if (picker_) {
+            auto cancel = picker_->onCancel;
+            picker_.reset();
+            if (cancel) cancel();
+            return;
+        }
+        if (ask_) {
+            auto cancel = ask_->cancel;
+            ask_.reset();
+            ed_.set(askDraft_);
+            if (cancel) cancel();
+            return;
+        }
+        if (!ed_.empty()) {
+            ed_.clear();
+            return;
+        }
+        if (running()) {
+            ui(J({{"type", "conv.stop"}, {"id", current_}}));
+            toast("已要求停止");
+            return;
+        }
         long long now = util::nowMs();
-        if (now - lastCtrlC_ < 2000) { quit_ = true; return; }
+        if (now - lastCtrlC_ < 2000) {
+            quit_ = true;
+            return;
+        }
         lastCtrlC_ = now;
         toast("再按一次 Ctrl+C 離開");
         return;
     }
-    if (k.code == K::Char && k.ctrl && k.ch == 'd' && ed_.empty() && !picker_ && !ask_) { quit_ = true; return; }
-    if (k.code == K::Char && k.ctrl && k.ch == 'l') { liveWidths_.clear(); term::write("\x1b[2J\x1b[H"); return; }
-    if (picker_) { pickerKey(k); return; }
+    if (k.code == K::Char && k.ctrl && k.ch == 'd' && ed_.empty() && !picker_ && !ask_) {
+        quit_ = true;
+        return;
+    }
+    if (k.code == K::Char && k.ctrl && k.ch == 'l') {
+        liveWidths_.clear();
+        term::write("\x1b[2J\x1b[H");
+        return;
+    }
+    if (picker_) {
+        pickerKey(k);
+        return;
+    }
     if (!ask_ && ed_.empty() && widgetKey(k)) return;
 
     std::vector<const Command*> ms = ask_ ? std::vector<const Command*>{} : matches();
     switch (k.code) {
     case K::Enter:
-        if (k.shift || k.ctrl || k.alt || k.pasted) { ed_.insert('\n'); return; }
+        if (k.shift || k.ctrl || k.alt || k.pasted) {
+            ed_.insert('\n');
+            return;
+        }
         if (!ms.empty() && ed_.utf8() != ms[std::clamp(popupSel_, 0, (int)ms.size() - 1)]->name) {
             ed_.set(ms[std::clamp(popupSel_, 0, (int)ms.size() - 1)]->name);
         }
         submit();
         return;
     case K::Tab:
-        if (!ms.empty()) { ed_.set(std::string(ms[std::clamp(popupSel_, 0, (int)ms.size() - 1)]->name) + " "); popupSel_ = 0; }
+        if (!ms.empty()) {
+            ed_.set(std::string(ms[std::clamp(popupSel_, 0, (int)ms.size() - 1)]->name) + " ");
+            popupSel_ = 0;
+        }
         return;
     case K::Esc:
-        if (ask_) { auto cancel = ask_->cancel; ask_.reset(); ed_.set(askDraft_); if (cancel) cancel(); return; }
-        if (running()) { ui(J({{"type", "conv.stop"}, {"id", current_}})); toast("已要求停止"); return; }
+        if (ask_) {
+            auto cancel = ask_->cancel;
+            ask_.reset();
+            ed_.set(askDraft_);
+            if (cancel) cancel();
+            return;
+        }
+        if (running()) {
+            ui(J({{"type", "conv.stop"}, {"id", current_}}));
+            toast("已要求停止");
+            return;
+        }
         ed_.clear();
         return;
-    case K::Backspace: if (k.ctrl) ed_.killWord(); else ed_.backspace(); popupSel_ = 0; return;
-    case K::Delete: ed_.del(); return;
-    case K::Left: ed_.left(); return;
-    case K::Right: ed_.right(); return;
-    case K::Home: ed_.home(); return;
-    case K::End: ed_.end(); return;
+    case K::Backspace:
+        if (k.ctrl) ed_.killWord();
+        else ed_.backspace();
+        popupSel_ = 0;
+        return;
+    case K::Delete:
+        ed_.del();
+        return;
+    case K::Left:
+        ed_.left();
+        return;
+    case K::Right:
+        ed_.right();
+        return;
+    case K::Home:
+        ed_.home();
+        return;
+    case K::End:
+        ed_.end();
+        return;
     case K::Up:
-        if (!ms.empty()) { popupSel_ = std::max(0, popupSel_ - 1); return; }
-        if (!ed_.onFirstLine()) { ed_.up(); return; }
+        if (!ms.empty()) {
+            popupSel_ = std::max(0, popupSel_ - 1);
+            return;
+        }
+        if (!ed_.onFirstLine()) {
+            ed_.up();
+            return;
+        }
         if (!ask_ && !history_.empty()) {
-            if (histPos_ < 0) { histDraft_ = ed_.utf8(); histPos_ = (int)history_.size(); }
+            if (histPos_ < 0) {
+                histDraft_ = ed_.utf8();
+                histPos_ = (int)history_.size();
+            }
             if (histPos_ > 0) ed_.set(history_[--histPos_]);
         }
         return;
     case K::Down:
-        if (!ms.empty()) { popupSel_ = std::min((int)ms.size() - 1, popupSel_ + 1); return; }
-        if (!ed_.onLastLine()) { ed_.down(); return; }
+        if (!ms.empty()) {
+            popupSel_ = std::min((int)ms.size() - 1, popupSel_ + 1);
+            return;
+        }
+        if (!ed_.onLastLine()) {
+            ed_.down();
+            return;
+        }
         if (!ask_ && histPos_ >= 0) {
-            if (++histPos_ >= (int)history_.size()) { histPos_ = -1; ed_.set(histDraft_); }
-            else ed_.set(history_[histPos_]);
+            if (++histPos_ >= (int)history_.size()) {
+                histPos_ = -1;
+                ed_.set(histDraft_);
+            } else ed_.set(history_[histPos_]);
         }
         return;
     case K::Char:
@@ -1426,11 +1626,18 @@ bool Cli::widgetKey(const term::Key& k) {
         q = &block["questions"].at(std::clamp(questionAt_, 0, (int)block["questions"].size() - 1));
         count = (int)(*q)["options"].size() + 1 + ((*q)["multiSelect"].boolean() ? 1 : 0);
     }
-    if (k.code == K::Up) { widgetSel_ = (widgetSel_ + count - 1) % std::max(count, 1); return true; }
-    if (k.code == K::Down || k.code == K::Tab) { widgetSel_ = (widgetSel_ + 1) % std::max(count, 1); return true; }
+    if (k.code == K::Up) {
+        widgetSel_ = (widgetSel_ + count - 1) % std::max(count, 1);
+        return true;
+    }
+    if (k.code == K::Down || k.code == K::Tab) {
+        widgetSel_ = (widgetSel_ + 1) % std::max(count, 1);
+        return true;
+    }
     int pick = -1;
     if (k.code == K::Enter) pick = widgetSel_;
-    else if (k.code == K::Char && !k.ctrl && k.ch >= '1' && k.ch <= '9' && (int)(k.ch - '1') < count) pick = (int)(k.ch - '1');
+    else if (k.code == K::Char && !k.ctrl && k.ch >= '1' && k.ch <= '9' && (int)(k.ch - '1') < count)
+        pick = (int)(k.ch - '1');
     else if (k.code == K::Esc && approval) {
         for (int i = 0; i < count; ++i) {
             if (block["options"].at(i)["id"].str() == "deny") pick = i;
@@ -1452,7 +1659,12 @@ void Cli::choose(const Json& block, const std::string& msgId, const std::string&
     std::string blockId = block["id"].str();
     std::string agent = block["agent"].str() == "codex" ? "codex" : "claude";
     auto send = [this, msgId, blockId, choice](const std::string& feedback) {
-        ui(J({{"type", "approval"}, {"convId", current_}, {"msgId", msgId}, {"blockId", blockId}, {"choice", choice}, {"feedback", feedback}}));
+        ui(J({{"type", "approval"},
+              {"convId", current_},
+              {"msgId", msgId},
+              {"blockId", blockId},
+              {"choice", choice},
+              {"feedback", feedback}}));
     };
     if (choice == "deny" || choice == "abort") {
         Ask a;
@@ -1478,7 +1690,11 @@ void Cli::answerQuestion(const Json& block, const std::string& msgId, int option
             ++questionAt_;
             widgetSel_ = 0;
         } else {
-            ui(J({{"type", "question"}, {"convId", current_}, {"msgId", msgId}, {"blockId", blockId}, {"answers", answers_}}));
+            ui(J({{"type", "question"},
+                  {"convId", current_},
+                  {"msgId", msgId},
+                  {"blockId", blockId},
+                  {"answers", answers_}}));
         }
         dirty_ = true;
     };
@@ -1513,7 +1729,10 @@ void Cli::answerQuestion(const Json& block, const std::string& msgId, int option
         };
         ask(std::move(a));
     } else {
-        if (answers_[key].size() == 0) { toast("至少選一項", "error"); return; }
+        if (answers_[key].size() == 0) {
+            toast("至少選一項", "error");
+            return;
+        }
         advance();
     }
 }
@@ -1523,17 +1742,29 @@ void Cli::pickerKey(const term::Key& k) {
     Picker& p = *picker_;
     std::vector<int> vis = p.visible();
     switch (k.code) {
-    case K::Up: p.sel = vis.empty() ? 0 : (p.sel + (int)vis.size() - 1) % (int)vis.size(); return;
-    case K::Down: case K::Tab: p.sel = vis.empty() ? 0 : (p.sel + 1) % (int)vis.size(); return;
-    case K::PageUp: p.sel = std::max(0, p.sel - 10); return;
-    case K::PageDown: p.sel = std::min((int)vis.size() - 1, p.sel + 10); return;
+    case K::Up:
+        p.sel = vis.empty() ? 0 : (p.sel + (int)vis.size() - 1) % (int)vis.size();
+        return;
+    case K::Down:
+    case K::Tab:
+        p.sel = vis.empty() ? 0 : (p.sel + 1) % (int)vis.size();
+        return;
+    case K::PageUp:
+        p.sel = std::max(0, p.sel - 10);
+        return;
+    case K::PageDown:
+        p.sel = std::min((int)vis.size() - 1, p.sel + 10);
+        return;
     case K::Esc: {
         auto cancel = p.onCancel;
         picker_.reset();
         if (cancel) cancel();
         return;
     }
-    case K::Backspace: if (!p.filter.empty()) p.filter.pop_back(); p.sel = 0; return;
+    case K::Backspace:
+        if (!p.filter.empty()) p.filter.pop_back();
+        p.sel = 0;
+        return;
     case K::Enter: {
         if (vis.empty()) return;
         // The callback may open the next list, so take this one off first.
@@ -1546,7 +1777,10 @@ void Cli::pickerKey(const term::Key& k) {
         return;
     }
     case K::Char:
-        if (!k.ctrl) { p.filter += k.ch; p.sel = 0; }
+        if (!k.ctrl) {
+            p.filter += k.ch;
+            p.sel = 0;
+        }
         return;
     default:
         return;
@@ -1556,7 +1790,10 @@ void Cli::pickerKey(const term::Key& k) {
 void Cli::submit() {
     std::string text = util::trim(ed_.utf8());
     if (ask_) {
-        if (text.empty() && !ask_->allowEmpty) { toast("請輸入內容", "error"); return; }
+        if (text.empty() && !ask_->allowEmpty) {
+            toast("請輸入內容", "error");
+            return;
+        }
         std::unique_ptr<Ask> a = std::move(ask_);
         ed_.set(askDraft_);
         if (a->done) a->done(text);
@@ -1573,7 +1810,10 @@ void Cli::submit() {
         runCommand(toLowerAscii(text.substr(0, sp)), sp == std::string::npos ? "" : util::trim(text.substr(sp + 1)));
         return;
     }
-    if (!conv()) { toast("還沒有對話", "error"); return; }
+    if (!conv()) {
+        toast("還沒有對話", "error");
+        return;
+    }
     if (running()) {
         auto token = util::newId();
         queuedDrafts_[token] = text;
@@ -1595,7 +1835,10 @@ void Cli::pickAgent(const std::string& title, std::function<void(const std::stri
         p.items.push_back({name("local1"), "本地審查員 1", "local1", C::kLocal1});
         p.items.push_back({name("local2"), "本地審查員 2", "local2", C::kLocal2});
     }
-    p.onPick = [then](Item& it) { then(it.value); return false; };
+    p.onPick = [then](Item& it) {
+        then(it.value);
+        return false;
+    };
     openPicker(std::move(p));
 }
 
@@ -1643,10 +1886,12 @@ void Cli::pickEffort(const std::string& agent) {
         if (v != model) continue;
         for (const auto& e : m["supportedEffortLevels"].items()) levels.push_back(e.str());
     }
-    if (levels.empty()) levels = agent == "claude" ? std::vector<std::string>{"low", "medium", "high", "xhigh", "max"}
-                                                   : std::vector<std::string>{"low", "medium", "high", "xhigh"};
+    if (levels.empty())
+        levels = agent == "claude" ? std::vector<std::string>{"low", "medium", "high", "xhigh", "max"}
+                                   : std::vector<std::string>{"low", "medium", "high", "xhigh"};
     if (agent == "claude" && std::find(levels.begin(), levels.end(), "ultracode") == levels.end() &&
-        (std::find(levels.begin(), levels.end(), "xhigh") != levels.end() || std::find(levels.begin(), levels.end(), "max") != levels.end())) {
+        (std::find(levels.begin(), levels.end(), "xhigh") != levels.end() ||
+         std::find(levels.begin(), levels.end(), "max") != levels.end())) {
         levels.push_back("ultracode");
     }
     std::string key = agent == "claude" ? "claudeEffort" : "codexEffort";
@@ -1655,8 +1900,13 @@ void Cli::pickEffort(const std::string& agent) {
     p.title = name(agent) + " 的思考程度";
     p.items.push_back({"預設", "由模型決定", ""});
     static const std::map<std::string, std::string> hints = {
-        {"minimal", "幾乎不思考，最快"}, {"low", "快速回應，思考較少"}, {"medium", "速度和思考深度平衡"}, {"high", "想得更深，適合複雜問題"},
-        {"xhigh", "非常深入的思考"}, {"max", "最大思考深度"}, {"ultra", "最大思考深度，並自動分派子代理（用量最高）"},
+        {"minimal", "幾乎不思考，最快"},
+        {"low", "快速回應，思考較少"},
+        {"medium", "速度和思考深度平衡"},
+        {"high", "想得更深，適合複雜問題"},
+        {"xhigh", "非常深入的思考"},
+        {"max", "最大思考深度"},
+        {"ultra", "最大思考深度，並自動分派子代理（用量最高）"},
         {"ultracode", "在 XHigh 之上開啟動態工作流程，分派子代理（用量最高）"}};
     for (const auto& e : levels) p.items.push_back({effortLabel(e), hints.count(e) ? hints.at(e) : "", e});
     for (auto& it : p.items) it.checkable = true, it.checked = it.value == cur;
@@ -1691,7 +1941,9 @@ void Cli::pickPermission() {
         confirm.items.push_back({"確定", "AI 可以不經詢問改任何檔案、執行任何指令、連上網路", "yes", C::kErr});
         confirm.onPick = [this](Item& c2) {
             if (c2.value == "yes") {
-                ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"permission", "bypass"}, {"confirmBypass", true}})}}));
+                ui(J({{"type", "conv.settings"},
+                      {"id", current_},
+                      {"settings", J({{"permission", "bypass"}, {"confirmBypass", true}})}}));
                 toast("已切換到「跳過所有確認」", "error");
             }
             return false;
@@ -1715,7 +1967,8 @@ void Cli::pickPersona(const std::string& who) {
         std::string a = x["agent"].str();
         bool fits = a == "any" || a.empty() || a == who || (local && a == "local");
         if (!fits) continue;
-        Item it{x["name"].str(), tui::clipText(x["summary"].str(), 60) + (x["builtin"].boolean() ? "" : "（自訂）"), x["id"].str()};
+        Item it{x["name"].str(), tui::clipText(x["summary"].str(), 60) + (x["builtin"].boolean() ? "" : "（自訂）"),
+                x["id"].str()};
         it.checkable = true;
         it.checked = it.value == cur;
         p.items.push_back(it);
@@ -1725,12 +1978,17 @@ void Cli::pickPersona(const std::string& who) {
     for (const auto& x : personas_.items()) hasCustom |= !x["builtin"].boolean();
     if (hasCustom) p.items.push_back({"－ 刪除自訂性格", "", "+delete", C::kErr});
     p.onPick = [this, who](Item& it) {
-        if (it.value == "+new") { newPersona(who); return false; }
+        if (it.value == "+new") {
+            newPersona(who);
+            return false;
+        }
         if (it.value == "+delete") {
             Picker del;
             del.title = "刪除哪個自訂性格？";
             for (const auto& x : personas_.items()) {
-                if (!x["builtin"].boolean()) del.items.push_back({x["name"].str(), tui::clipText(x["summary"].str(), 60), x["id"].str(), C::kErr});
+                if (!x["builtin"].boolean())
+                    del.items.push_back(
+                        {x["name"].str(), tui::clipText(x["summary"].str(), 60), x["id"].str(), C::kErr});
             }
             del.onPick = [this](Item& d) {
                 ui(J({{"type", "persona.delete"}, {"id", d.value}}));
@@ -1778,18 +2036,34 @@ void Cli::showHelp() {
     std::vector<Line> out = {{}, {{tui::fg(C::kBrand, true), "  指令"}}};
     for (const auto& c : kCommands) {
         std::string head = std::string(c.name) + (*c.args ? std::string(" ") + c.args : "");
-        Line l = {{Style(), "    " + head}, {Style(), std::string(std::max(1, 22 - tui::width(head)), ' ')}, {tui::muted(), c.desc}};
+        Line l = {{Style(), "    " + head},
+                  {Style(), std::string(std::max(1, 22 - tui::width(head)), ' ')},
+                  {tui::muted(), c.desc}};
         for (auto& w : tui::wrap(l, cols, {}, L(std::string(26, ' ')))) out.push_back(w);
     }
     out.push_back({});
     out.push_back({{tui::fg(C::kBrand, true), "  快捷鍵"}});
     const char* keys[][2] = {
-        {"Enter", "送出"}, {"Shift+Enter／Ctrl+J", "換行"}, {"Esc", "停止 AI；沒有在工作時清空輸入"}, {"↑ ↓", "叫出之前輸入過的內容"},
-        {"Tab", "補完指令"}, {"Ctrl+U／Ctrl+K", "刪到行首／行尾"}, {"Ctrl+W", "刪掉前一個詞"}, {"Ctrl+L", "清除畫面"}, {"Ctrl+C 兩次", "離開"},
+        {"Enter", "送出"},
+        {"Shift+Enter／Ctrl+J", "換行"},
+        {"Esc", "停止 AI；沒有在工作時清空輸入"},
+        {"↑ ↓", "叫出之前輸入過的內容"},
+        {"Tab", "補完指令"},
+        {"Ctrl+U／Ctrl+K", "刪到行首／行尾"},
+        {"Ctrl+W", "刪掉前一個詞"},
+        {"Ctrl+L", "清除畫面"},
+        {"Ctrl+C 兩次", "離開"},
     };
-    for (auto& k : keys) out.push_back({{Style(), std::string("    ") + k[0]}, {Style(), std::string(std::max(1, 22 - tui::width(k[0])), ' ')}, {tui::muted(), k[1]}});
+    for (auto& k : keys)
+        out.push_back({{Style(), std::string("    ") + k[0]},
+                       {Style(), std::string(std::max(1, 22 - tui::width(k[0])), ' ')},
+                       {tui::muted(), k[1]}});
     out.push_back({});
-    for (auto& w : tui::wrap({{tui::muted(), "權限請求出現時，用 ↑↓ 或數字選擇、Enter 確定，Esc 是拒絕。私訊和群組與桌面版共用，兩邊不能同時開著。"}}, cols, L("  "), L("  "))) out.push_back(w);
+    for (auto& w : tui::wrap(
+             {{tui::muted(),
+               "權限請求出現時，用 ↑↓ 或數字選擇、Enter 確定，Esc 是拒絕。私訊和群組與桌面版共用，兩邊不能同時開著。"}},
+             cols, L("  "), L("  ")))
+        out.push_back(w);
     commit(out);
 }
 
@@ -2025,7 +2299,8 @@ void Cli::showStatus() {
         out.push_back({{tui::muted(), buf}});
     }
     out.push_back({{tui::muted(), "  資料：" + util::narrow(util::appDataDir())}});
-    out.push_back({{tui::muted(), std::string("  去 AI 化：") + (settings_["humanize"]["enabled"].boolean() ? "開啟" : "關閉")}});
+    out.push_back(
+        {{tui::muted(), std::string("  去 AI 化：") + (settings_["humanize"]["enabled"].boolean() ? "開啟" : "關閉")}});
     commit(out);
     ui(J({{"type", "auth.check"}}));
 }
@@ -2157,9 +2432,18 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         else ui(J({{"type", "update.get"}}));
         return;
     }
-    if (cmd == "/help" || cmd == "/?") { showHelp(); return; }
-    if (cmd == "/exit" || cmd == "/quit") { quit_ = true; return; }
-    if (cmd == "/status") { showStatus(); return; }
+    if (cmd == "/help" || cmd == "/?") {
+        showHelp();
+        return;
+    }
+    if (cmd == "/exit" || cmd == "/quit") {
+        quit_ = true;
+        return;
+    }
+    if (cmd == "/status") {
+        showStatus();
+        return;
+    }
     if (cmd == "/about") {
         std::vector<Line> out = {{}, {{tui::fg(C::kBrand, true), std::string("  ") + CCA_PRODUCT + " " + version_}}};
         for (const char* text :
@@ -2259,17 +2543,26 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
             Picker p;
             p.title = "協作流程圖";
             p.items = {{"自動", "寬視窗顯示節點和傳輸線，窄視窗自動精簡", "auto"},
-                       {"精簡", "只顯示成員和工作狀態", "compact"}, {"隱藏", "保留原本的文字狀態列", "off"}};
-            p.onPick = [this](Item& it) { ui(J({{"type", "visual.set"}, {"mode", it.value}})); return false; };
+                       {"精簡", "只顯示成員和工作狀態", "compact"},
+                       {"隱藏", "保留原本的文字狀態列", "off"}};
+            p.onPick = [this](Item& it) {
+                ui(J({{"type", "visual.set"}, {"mode", it.value}}));
+                return false;
+            };
             openPicker(std::move(p));
         }
         return;
     }
     if (cmd == "/motion") {
-        if (!args.empty() && args != "on" && args != "off") { toast("用法：/motion on 或 /motion off", "error"); return; }
+        if (!args.empty() && args != "on" && args != "off") {
+            toast("用法：/motion on 或 /motion off", "error");
+            return;
+        }
         bool on = args == "on" || (args.empty() && !settings_["visual"]["motion"].boolean(true));
         ui(J({{"type", "visual.set"}, {"motion", on}}));
-        toast(on && !systemMotion_ ? "Windows 已停用動態效果，流程圖保留靜態狀態" : on ? "動態效果已開啟" : "動態效果已關閉");
+        toast(on && !systemMotion_ ? "Windows 已停用動態效果，流程圖保留靜態狀態"
+              : on                 ? "動態效果已開啟"
+                                   : "動態效果已關閉");
         return;
     }
     if (cmd == "/groups") {
@@ -2308,17 +2601,22 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         p.title = "切換對話";
         for (const auto& x : convs_.items()) {
             bool g = x["kind"].str() == "group";
-            std::string hint = g ? (x["cwd"].str().empty() ? "群組 · 沒有資料夾" : "群組 · " + shortPath(x["cwd"].str())) : "私訊";
+            std::string hint =
+                g ? (x["cwd"].str().empty() ? "群組 · 沒有資料夾" : "群組 · " + shortPath(x["cwd"].str())) : "私訊";
             if (states_[x["id"].str()]["running"].boolean()) hint += " · 工作中";
             if (unread_.count(x["id"].str())) hint += " · 新回覆";
-            Item it{(g ? "# " : "@ ") + convTitle(x), hint, x["id"].str(), g ? C::kBrand : tui::agentColor(x["kind"].str())};
+            Item it{(g ? "# " : "@ ") + convTitle(x), hint, x["id"].str(),
+                    g ? C::kBrand : tui::agentColor(x["kind"].str())};
             it.checkable = true;
             it.checked = it.value == current_;
             p.items.push_back(it);
         }
         p.items.push_back({"＋ 建立新的群組", "", "+new", C::kBrand});
         p.onPick = [this](Item& it) {
-            if (it.value == "+new") { runCommand("/new", ""); return false; }
+            if (it.value == "+new") {
+                runCommand("/new", "");
+                return false;
+            }
             if (it.value != current_) open(it.value);
             return false;
         };
@@ -2332,9 +2630,15 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         ui(m);
         return;
     }
-    if (!c) { toast("還沒有對話", "error"); return; }
+    if (!c) {
+        toast("還沒有對話", "error");
+        return;
+    }
     if (cmd == "/lead") {
-        if ((*c)["kind"].str() == "codex") { toast("GPT 私訊固定由 GPT 處理；請在群組或 Claude 私訊切換主刀"); return; }
+        if ((*c)["kind"].str() == "codex") {
+            toast("GPT 私訊固定由 GPT 處理；請在群組或 Claude 私訊切換主刀");
+            return;
+        }
         auto setLead = [this](const std::string& lead) {
             ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"lead", lead}})}}));
         };
@@ -2344,15 +2648,25 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         else {
             Picker p;
             p.title = "選擇主刀手";
-            p.items = {{"Claude", "Claude 實作，GPT 審查", "claude"}, {"GPT", "GPT 實作，Claude 可用時負責審查", "codex"}};
-            p.onPick = [setLead](Item& it) { setLead(it.value); return false; };
+            p.items = {{"Claude", "Claude 實作，GPT 審查", "claude"},
+                       {"GPT", "GPT 實作，Claude 可用時負責審查", "codex"}};
+            p.onPick = [setLead](Item& it) {
+                setLead(it.value);
+                return false;
+            };
             openPicker(std::move(p));
         }
         return;
     }
-    if (cmd == "/takeover") { ui(J({{"type", "conv.takeover"}, {"id", current_}})); return; }
+    if (cmd == "/takeover") {
+        ui(J({{"type", "conv.takeover"}, {"id", current_}}));
+        return;
+    }
     if (cmd == "/fallback") {
-        if (!args.empty() && args != "on" && args != "off") { toast("用法：/fallback on 或 /fallback off", "error"); return; }
+        if (!args.empty() && args != "on" && args != "off") {
+            toast("用法：/fallback on 或 /fallback off", "error");
+            return;
+        }
         bool on = args == "on" || (args.empty() && !(*c)["autoFallback"].boolean(true));
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"autoFallback", on}})}}));
         toast(on ? "已開啟 GPT 自動接手" : "已關閉 GPT 自動接手");
@@ -2366,7 +2680,8 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         }
         std::wstring raw = util::widen(args == "~" ? util::narrow(util::homeDir()) : args);
         if (raw.size() >= 2 && raw.front() == L'"' && raw.back() == L'"') raw = raw.substr(1, raw.size() - 2);
-        if (util::startsWith(args, "~\\") || util::startsWith(args, "~/")) raw = util::joinPath(util::homeDir(), util::widen(args.substr(2)));
+        if (util::startsWith(args, "~\\") || util::startsWith(args, "~/"))
+            raw = util::joinPath(util::homeDir(), util::widen(args.substr(2)));
         wchar_t full[MAX_PATH * 4];
         std::wstring prev;
         prev.resize(MAX_PATH * 4);
@@ -2380,7 +2695,8 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         std::string before = (*c)["cwd"].str();
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"cwd", util::narrow(path)}})}}));
         if (const Json* after = conv()) {
-            if ((*after)["cwd"].str() != before) note("專案資料夾改為 " + shortPath((*after)["cwd"].str()), C::kBrand, "✓");
+            if ((*after)["cwd"].str() != before)
+                note("專案資料夾改為 " + shortPath((*after)["cwd"].str()), C::kBrand, "✓");
         }
         return;
     }
@@ -2688,7 +3004,10 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         return;
     }
     if (cmd == "/daily") {
-        if (group) { toast("日常模式只能在私訊用", "error"); return; }
+        if (group) {
+            toast("日常模式只能在私訊用", "error");
+            return;
+        }
         bool on = !(*c)["daily"].boolean();
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"daily", on}})}}));
         toast(on ? "日常模式：改用最省額度的模型，改檔案或執行指令前會先問你" : "回到工作模式", "ok");
@@ -2697,7 +3016,10 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
     if (cmd == "/rounds") {
         if (!needGroup()) return;
         int n = std::atoi(args.c_str());
-        if (n < 1 || n > 20) { toast("用法：/rounds 1 到 20", "error"); return; }
+        if (n < 1 || n > 20) {
+            toast("用法：/rounds 1 到 20", "error");
+            return;
+        }
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"maxRounds", n}})}}));
         toast("審查輪數上限改為 " + std::to_string(n), "ok");
         return;
@@ -2788,7 +3110,10 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
     }
     if (cmd == "/rename") {
         if (!needGroup()) return;
-        if (args.empty()) { toast("用法：/rename 新名稱", "error"); return; }
+        if (args.empty()) {
+            toast("用法：/rename 新名稱", "error");
+            return;
+        }
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"name", args}})}}));
         return;
     }
@@ -2801,7 +3126,8 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         for (const auto& l : (*c)["localMembers"].items()) in.insert(l.str());
         for (const char* slot : {"local1", "local2"}) {
             std::string model = settings_["locals"][slot]["model"].str();
-            Item it{name(slot), model.empty() ? "還沒選模型（在桌面版 設定 › 本地模型）" : model, slot, tui::agentColor(slot)};
+            Item it{name(slot), model.empty() ? "還沒選模型（在桌面版 設定 › 本地模型）" : model, slot,
+                    tui::agentColor(slot)};
             it.checkable = true;
             it.checked = in.count(slot) > 0;
             p.items.push_back(it);
@@ -2865,7 +3191,10 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         return;
     }
     if (cmd == "/humanize") {
-        if (!args.empty() && args != "on" && args != "off") { toast("用法：/humanize on 或 /humanize off", "error"); return; }
+        if (!args.empty() && args != "on" && args != "off") {
+            toast("用法：/humanize on 或 /humanize off", "error");
+            return;
+        }
         bool on = args == "on" ? true : args == "off" ? false : !settings_["humanize"]["enabled"].boolean();
         ui(J({{"type", "humanize.set"}, {"enabled", on}}));
         toast(on ? "去 AI 化已開啟：做網頁、美術和文字時避開 AI 預設風格" : "去 AI 化已關閉", "ok");
@@ -2899,7 +3228,8 @@ int Cli::run(int argc, wchar_t** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string a = util::narrow(argv[i]);
         if (a == "--help" || a == "-h" || a == "/?") {
-            say(std::string(CCA_PRODUCT) + " CLI " + CCA_VERSION + "\n\n用法：ChatClaudeAgent-CLI [claude | gpt | group | 群組名稱]\n\n"
+            say(std::string(CCA_PRODUCT) + " CLI " + CCA_VERSION +
+                "\n\n用法：ChatClaudeAgent-CLI [claude | gpt | group | 群組名稱]\n\n"
                 "在終端機裡和 Claude、GPT 對話，或讓兩個一起寫程式。對話和桌面版共用，兩邊不能同時開著。\n"
                 "開啟後輸入 /help 看所有指令。\n");
             return 0;
@@ -2922,14 +3252,18 @@ int Cli::run(int argc, wchar_t** argv) {
     if (util::getEnv(L"CCA_DATA_DIR").empty()) {
         if (HANDLE old = OpenMutexW(SYNCHRONIZE, FALSE, L"Local\\CCA.SingleInstance")) {
             CloseHandle(old);
-            term::write("\x1b[38;2;221;169;75m! ChatClaudeAgent 桌面版正在執行，它和 CLI 共用同一份對話資料。請先關閉桌面版，再開啟 CLI。\x1b[0m\r\n");
+            term::write(
+                "\x1b[38;2;221;169;75m! ChatClaudeAgent 桌面版正在執行，它和 CLI "
+                "共用同一份對話資料。請先關閉桌面版，再開啟 CLI。\x1b[0m\r\n");
             term::restore();
             return 1;
         }
     }
     void* lock = util::lockDataDir();
     if (!lock) {
-        term::write("\x1b[38;2;221;169;75m! 另一個 ChatClaudeAgent（桌面版或 CLI）正在使用同一份對話資料，請先關閉它。\x1b[0m\r\n");
+        term::write(
+            "\x1b[38;2;221;169;75m! 另一個 ChatClaudeAgent（桌面版或 "
+            "CLI）正在使用同一份對話資料，請先關閉它。\x1b[0m\r\n");
         term::restore();
         return 1;
     }
@@ -2951,7 +3285,9 @@ int Cli::run(int argc, wchar_t** argv) {
         if (action == "close") quit_ = true;
         if (action == "flash") term::write("\a");  // the terminal's own "needs attention"
     };
-    app_->openExternal = [](const std::wstring& target) { ShellExecuteW(nullptr, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL); };
+    app_->openExternal = [](const std::wstring& target) {
+        ShellExecuteW(nullptr, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    };
     ui(J({{"type", "ready"}}));
     printHeader();
 
@@ -2963,13 +3299,17 @@ int Cli::run(int argc, wchar_t** argv) {
         if ((w == "claude" && kind == "claude") || ((w == "gpt" || w == "codex") && kind == "codex") ||
             (w == "gemini" && kind == "gemini"))
             pick = c["id"].str();
-        if (pick.empty() && !w.empty() && kind == "group" && (w == "group" || toLowerAscii(c["name"].str()) == w)) pick = c["id"].str();
+        if (pick.empty() && !w.empty() && kind == "group" && (w == "group" || toLowerAscii(c["name"].str()) == w))
+            pick = c["id"].str();
     }
     if (!want.empty() && pick.empty()) note("找不到對話「" + want + "」，開啟上次的對話", C::kWarn, "!");
     if (pick.empty() && conv(settings_["lastConv"].str())) pick = settings_["lastConv"].str();
     if (pick.empty()) {
         for (const auto& c : convs_.items()) {
-            if (c["kind"].str() == "group") { pick = c["id"].str(); break; }
+            if (c["kind"].str() == "group") {
+                pick = c["id"].str();
+                break;
+            }
         }
     }
     open(pick);
@@ -2995,8 +3335,12 @@ int Cli::run(int argc, wchar_t** argv) {
             nextTick = now + 50;
         }
         drain();
-        if (!toast_.empty() && now >= toastUntil_) { toast_.clear(); dirty_ = true; }
-        bool animate = running() && now - lastFrame_ >= (motionOn() && tui::workflowAnimating(state()["workflow"], now) ? 90 : 1000);
+        if (!toast_.empty() && now >= toastUntil_) {
+            toast_.clear();
+            dirty_ = true;
+        }
+        bool animate = running() &&
+                       now - lastFrame_ >= (motionOn() && tui::workflowAnimating(state()["workflow"], now) ? 90 : 1000);
         if (term::cols() != lastCols_) dirty_ = true;
         if ((dirty_ && now - lastFrame_ >= 30) || animate) frame();
     }
@@ -3008,7 +3352,8 @@ int Cli::run(int argc, wchar_t** argv) {
     ask_.reset();
     std::string out = "\r";
     int up = 0;
-    for (int i = 0; i < caretRow_ && i < (int)liveWidths_.size(); ++i) up += std::max(1, (liveWidths_[i] + term::cols() - 1) / term::cols());
+    for (int i = 0; i < caretRow_ && i < (int)liveWidths_.size(); ++i)
+        up += std::max(1, (liveWidths_[i] + term::cols() - 1) / term::cols());
     if (up > 0) out += "\x1b[" + std::to_string(up) + "A";
     out += "\x1b[J" + pendingOut_;
     out += tui::ansi({{tui::faint(), "  已離開 " CCA_PRODUCT "，對話已儲存。"}}) + "\r\n";

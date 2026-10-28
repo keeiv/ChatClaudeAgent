@@ -28,18 +28,18 @@ struct GroupRun {
     bool stopRequested = false;
     bool solo = false;  // Claude is unavailable; GPT completes and checks the work.
     std::string task;
-    int round = 0;            // reviewer turns so far
-    std::string phase;        // write | review | recheck
-    std::string current;      // claude | codex
-    std::string turnText;     // final reply of the turn that just ran
+    int round = 0;         // reviewer turns so far
+    std::string phase;     // write | review | recheck
+    std::string current;   // claude | codex
+    std::string turnText;  // final reply of the turn that just ran
     Json turnFiles = Json::array();
-    Json allFiles = Json::object();  // path -> {added, removed, change}
-    int limit = 6;            // reviewer turns allowed before asking the user
+    Json allFiles = Json::object();                  // path -> {added, removed, change}
+    int limit = 6;                                   // reviewer turns allowed before asking the user
     std::map<std::string, std::string> lastVerdict;  // agent -> write | changed | issues | approve
-    std::string lastPrompt;   // what the current agent was sent (for retry)
+    std::string lastPrompt;                          // what the current agent was sent (for retry)
     bool paused = false;
     std::string pauseReason;
-    std::string pendingAgent;   // who to send to when the user presses continue/retry
+    std::string pendingAgent;  // who to send to when the user presses continue/retry
     std::string pendingPrompt;
     std::string pendingPhase;
     int pendingRound = 0;
@@ -48,11 +48,11 @@ struct GroupRun {
     std::string localActive;              // slot reviewing right now
     std::string localNotes;               // their suggestions, passed on unverified
     std::string nextAgent, nextPrompt, nextPhase;
-    std::string reviewedBy;               // whose changes the locals are reviewing
-    std::vector<std::string> notesNext;   // local reviewers whose notes go with the next handoff
-    std::vector<std::string> notesFrom;   // local reviewers whose notes came with the current prompt
-    std::string pauseKind;                // "guard" when paused over a reply that failed the checks
-    std::string guardMsg;                 // that reply, for "accept and continue"
+    std::string reviewedBy;              // whose changes the locals are reviewing
+    std::vector<std::string> notesNext;  // local reviewers whose notes go with the next handoff
+    std::vector<std::string> notesFrom;  // local reviewers whose notes came with the current prompt
+    std::string pauseKind;               // "guard" when paused over a reply that failed the checks
+    std::string guardMsg;                // that reply, for "accept and continue"
     // Members are rotated in order (lead, partner, Gemini); quota-exhausted ones are skipped for this run.
     std::set<std::string> skipped;
     std::set<std::string> approvals;  // members who accepted the code since its latest change
@@ -75,7 +75,7 @@ struct Conversation {
     int maxRounds = 6;
     std::string lead = "claude";
     bool autoFallback = true;
-    bool daily = false;  // 日常模式: casual chat on the cheapest model (DMs only)
+    bool daily = false;                     // 日常模式: casual chat on the cheapest model (DMs only)
     bool regressionGuard = false;           // groups: undo a reviewer's edits that turn the tests red
     std::string testCommand;                // groups: the command the guard runs in the project folder
     std::string mode;                       // a CCA plugin mode applied here ("plugin/mode"), or empty
@@ -90,9 +90,9 @@ struct Conversation {
     std::shared_ptr<LocalSession> local[2];
     std::string activeMsg[5];  // Claude, Codex, two local slots, Gemini.
     bool thinking[5] = {};
-    int guardTry[5] = {};       // Send-backs for the reply being checked.
-    bool guardResend[5] = {};   // Preserve the counter on a send-back.
-    std::string preparing;      // agent whose turn waits for the checkpoint to finish
+    int guardTry[5] = {};      // Send-backs for the reply being checked.
+    bool guardResend[5] = {};  // Preserve the counter on a send-back.
+    std::string preparing;     // agent whose turn waits for the checkpoint to finish
     std::string pendingSnapshot;
     GroupRun group;
     WorkflowRun workflow;
@@ -162,6 +162,8 @@ public:
     std::function<std::wstring(const std::wstring& initial)> pickFolder;
     std::function<std::wstring()> pickImage;
     std::function<void(const std::wstring& target)> openExternal;
+    // Desktop only: opens the Haiku phone simulator for an APK. Empty in the CLI.
+    std::function<bool(const std::wstring& apk, std::string& error)> openHaiku;
 
     // Where custom avatars and banners live (served to the page as https://media.cca.app/).
     static std::wstring mediaDir();
@@ -444,7 +446,7 @@ private:
     Json usage_ = J({{"claude", Json::object()}, {"codex", Json::object()}});
     std::string codexLoginId_;
     Snapshots snapshots_;
-    Json usageHistory_ = Json::object();  // "YYYY-MM-DD" -> agent -> totals
+    Json usageHistory_ = Json::object();   // "YYYY-MM-DD" -> agent -> totals
     Json personaPresets_ = Json::array();  // optional user-owned file, never embedded
     Json badgeGrants_ = Json::object();    // local decoration grants, never inferred from a name
     std::string badgeGrantProblem_;

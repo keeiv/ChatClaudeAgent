@@ -22,6 +22,9 @@ Json inspectFolder(const std::wstring& dir, const std::string& current, const st
                    const std::string& flavor, const std::string& edition = "");
 // Display name of an edition ID ("" is the ordinary edition); empty for an unknown ID.
 std::string editionName(const std::string& edition);
+// An Android package may only be opened (in the phone simulator) when its size and SHA-256 match the manifest.json
+// beside it, which names the same file and the haiku edition.
+bool verifyAndroidPackage(const std::wstring& apk, std::string& error);
 Json prepare(const Json& inspected, const std::wstring& exe);
 // Launches only a prepared copy of this executable. The broker acknowledges readiness before close.
 bool launch(const Json& prepared, std::string& error);
