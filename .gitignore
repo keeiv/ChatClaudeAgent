@@ -18,3 +18,6 @@ node_modules/
 *.jks
 *.keystore
 *.properties
+
+# Downloaded by build.bat (tools/fetch_webview2.py), hash-pinned.
+/third_party/webview2/build/
