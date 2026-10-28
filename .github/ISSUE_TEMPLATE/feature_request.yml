@@ -1,0 +1,28 @@
+name: 功能建議
+description: 想要 CCA 多做一件事
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解決什麼問題
+      description: 先說你遇到的情況，而不是你想要的功能。最近一次卡住是什麼時候？
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你想的做法
+      description: 有想法就寫，沒有也沒關係。
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 現在怎麼變通、考慮過什麼別的做法
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 範圍
+      options:
+        - label: 桌面版需要
+        - label: 終端機版需要
+        - label: 會動到權限、保存或更新機制（這類變更需要更仔細的討論）

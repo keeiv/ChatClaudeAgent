@@ -1,0 +1,11 @@
+# 這些路徑的變更一定要由作者審查（工作流程、安全政策、更新與保存的核心）。
+*                          @keeiv
+/.github/                  @keeiv
+/SECURITY.md               @keeiv
+/tools/check_public.py     @keeiv
+/tools/check_workflows.py  @keeiv
+/tools/make_release.py     @keeiv
+/src/updater.*             @keeiv
+/src/app_update.cpp        @keeiv
+/src/util.*                @keeiv
+/src/process.*             @keeiv

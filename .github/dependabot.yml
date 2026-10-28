@@ -1,0 +1,14 @@
+version: 2
+updates:
+  # 工作流程裡的 Action 釘在完整 SHA；Dependabot 會把 SHA 和旁邊的版本註解一起更新。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]

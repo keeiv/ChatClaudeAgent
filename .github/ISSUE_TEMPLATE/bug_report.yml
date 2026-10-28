@@ -1,0 +1,54 @@
+name: 回報錯誤
+description: 程式的行為和文件或預期不同
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        安全問題請**不要**在這裡回報，改用 Security 分頁的 Report a vulnerability（見 SECURITY.md）。
+        請不要貼上金鑰、權杖或你電腦上的私人路徑。
+  - type: input
+    id: version
+    attributes:
+      label: CCA 版本
+      description: 桌面版在「軟體更新」頁，終端機版執行 `ChatClaudeAgent-CLI.exe --version`
+      placeholder: 1.0.2-oss
+    validations:
+      required: true
+  - type: dropdown
+    id: shell
+    attributes:
+      label: 用的是哪一種
+      options: [桌面版, 終端機版, 兩個都有]
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows 版本
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: 發生了什麼
+      description: 你預期的結果，和你實際看到的結果
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重現步驟
+      description: 從開啟 CCA 開始，越具體越好。能重現的最小步驟最有幫助。
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 畫面與記錄
+      description: 截圖或相關文字。貼上前請遮掉金鑰、使用者名稱與私人路徑。

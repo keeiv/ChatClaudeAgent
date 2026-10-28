@@ -1,0 +1,257 @@
+name: CI
+
+# 每個外部 Action 都釘在完整的提交 SHA（tools/check_workflows.py 會檢查），預設權限唯讀。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 每週一 03:17 UTC：執行環境映像檔與瀏覽器更新後，確認主線仍然是綠的。
+    - cron: "17 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PLAYWRIGHT_VERSION: "1.64.1"
+  LINKEDOM_VERSION: "0.18.12"
+
+jobs:
+  hygiene:
+    name: 倉庫衛生與靜態檢查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: 不該進開源倉庫的內容（金鑰、個人路徑、二進位檔、內部紀錄）
+        run: python tools/check_public.py
+      - name: 工作流程的嚴格規則（SHA 釘版、權限、逾時）
+        run: python tools/check_workflows.py
+      - name: Markdown 連結
+        run: python tools/check_links.py
+      - name: 機械式風格規則與 JavaScript 語法
+        run: python tools/check_style.py --js
+      - name: 主題目錄與產生檔一致
+        run: python tools/make_themes.py --check
+
+  build:
+    name: 建置與風格（${{ matrix.os }}）
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: 改動的 C++ 行符合 .clang-format
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: pwsh
+        run: |
+          $base = $env:BASE_SHA
+          if (-not $base -or $base -match '^0+$') { $base = 'HEAD~1' }
+          git rev-parse --verify --quiet "$base^{commit}" | Out-Null
+          if ($LASTEXITCODE -ne 0) { $base = 'HEAD~1' }
+          python tools/check_style.py --format --js --base $base
+      - name: 桌面版
+        run: cmd /c ".\build.bat"
+      - name: 終端機版
+        run: cmd /c ".\build.bat cli"
+      - name: 執行檔雜湊
+        shell: pwsh
+        run: |
+          Get-FileHash build\ChatClaudeAgent.exe, build\ChatClaudeAgent-CLI.exe -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Tee-Object -FilePath build\SHA256SUMS.txt
+          build\ChatClaudeAgent-CLI.exe --version
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cca-${{ matrix.os }}
+          path: |
+            build/ChatClaudeAgent.exe
+            build/ChatClaudeAgent-CLI.exe
+            build/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error
+
+  native:
+    name: 原生測試（${{ matrix.os }}）
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: 單元、協定、保存、Git 與品質測試（假的後端，不花額度）
+        run: python tools/run_native_tests.py
+
+  simulated:
+    name: 模擬測試：假的 CLI、ConPTY 與工作程序
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: 建置終端機版、ConPTY 驅動程式、模擬後端、更新探針與沙箱驗證程式
+        shell: pwsh
+        run: |
+          foreach ($target in 'cli', 'pty', 'takeover-test', 'desk-test', 'sandbox-live') {
+            cmd /c ".\build.bat $target"
+            if ($LASTEXITCODE -ne 0) { throw "build.bat $target failed" }
+          }
+      - name: 終端機版在真實 ConPTY 裡的情境
+        run: python tests/cli_smoke.py
+      - name: 協作流程在終端機版
+        run: python tests/collaboration_cli.py --exe build/ChatClaudeAgent-CLI.exe
+      - name: 工作程序、沙箱與品質工具
+        shell: pwsh
+        run: |
+          python tests/test_agent_runtime.py
+          if ($LASTEXITCODE -ne 0) { throw "test_agent_runtime failed" }
+          python tests/test_sandbox_mcp.py
+          if ($LASTEXITCODE -ne 0) { throw "test_sandbox_mcp failed" }
+          python -m unittest discover -s tests -p "test_quality_worker.py"
+          if ($LASTEXITCODE -ne 0) { throw "test_quality_worker failed" }
+          python tests/test_sandbox_live.py
+          if ($LASTEXITCODE -ne 0) { throw "test_sandbox_live failed" }
+      - name: 風格檢查工具與發行工具的回歸測試
+        shell: pwsh
+        run: |
+          python tests/test_check_style.py
+          if ($LASTEXITCODE -ne 0) { throw "test_check_style failed" }
+          python tests/test_make_release.py
+          if ($LASTEXITCODE -ne 0) { throw "test_make_release failed" }
+      - name: 更新程式真的替換暫存 EXE、失敗時復原
+        run: python tests/test_update_broker.py
+
+  browser:
+    name: 介面測試：真實 Edge 與 DOM
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: 安裝測試用套件（版本固定，不執行安裝腳本；使用電腦上已有的 Edge）
+        shell: pwsh
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP\pw" --no-audit --no-fund --ignore-scripts "playwright@$env:PLAYWRIGHT_VERSION"
+          npm install --prefix build/workflow-qa --no-audit --no-fund --ignore-scripts "linkedom@$env:LINKEDOM_VERSION"
+          "NODE_PATH=$env:RUNNER_TEMP\pw\node_modules" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: 介面測試
+        run: python tests/run_browser_tests.py
+
+  memory:
+    name: 記憶體測試：洩漏量與 AddressSanitizer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: 私有記憶體成長量（一般建置）
+        run: cmd /c ".\build.bat memory-test"
+      - name: AddressSanitizer（越界、釋放後使用）
+        shell: pwsh
+        run: |
+          Remove-Item build\obj\*.obj -ErrorAction SilentlyContinue
+          $env:CCA_SANITIZE = "1"
+          cmd /c ".\build.bat memory-test"
+          if ($LASTEXITCODE -ne 0) { throw "memory-test under AddressSanitizer failed" }
+      - name: 單元測試也在 AddressSanitizer 下執行
+        shell: pwsh
+        run: |
+          Remove-Item build\obj\*.obj -ErrorAction SilentlyContinue
+          $env:CCA_SANITIZE = "1"
+          cmd /c ".\build.bat test"
+          if ($LASTEXITCODE -ne 0) { throw "unit tests under AddressSanitizer failed" }
+
+  extreme:
+    name: 極端環境：記憶體上限、單核心、怪路徑、損毀資料
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: 建置受測程式
+        shell: pwsh
+        run: |
+          foreach ($target in 'test', 'cli', 'pty', 'takeover-test') {
+            cmd /c ".\build.bat $target"
+            if ($LASTEXITCODE -ne 0) { throw "build.bat $target failed" }
+          }
+      - name: 極端環境情境
+        run: python tests/extreme_env.py
+
+  ci-ok:
+    name: CI 全部通過
+    if: ${{ always() }}
+    needs: [hygiene, build, native, simulated, browser, memory, extreme]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 任何一項失敗或被略過都算失敗
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          for r in $RESULTS; do
+            if [ "$r" != "success" ]; then
+              echo "有工作沒有成功：$r"
+              exit 1
+            fi
+          done
