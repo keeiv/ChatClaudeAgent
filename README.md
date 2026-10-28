@@ -10,9 +10,16 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/keeiv/ChatClaudeAgent/actions/workflows/ci.yml"><img src="https://github.com/keeiv/ChatClaudeAgent/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI 狀態"></a>
+  <a href="https://github.com/keeiv/ChatClaudeAgent/actions/workflows/codeql.yml"><img src="https://github.com/keeiv/ChatClaudeAgent/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL 狀態"></a>
+</p>
+
+<p align="center">
   <a href="LICENSE">GPL-3.0</a> ·
   <a href="docs/editions.md">版本路線</a> ·
   <a href="docs/changelog.md">更新紀錄</a> ·
+  <a href="CONTRIBUTING.md">貢獻指南</a> ·
+  <a href="SECURITY.md">安全政策</a> ·
   <a href="AGENTS.md">開發指南</a>
 </p>
 
@@ -22,11 +29,11 @@
 
 | 版本 | 圖標 | 狀態 | 授權 | 倉庫 |
 | --- | --- | --- | --- | --- |
-| 普通版本 CCA | <img src="assets/logo/cca-app-64.png" width="40" alt="CCA"> | 1.0.1-astra | 開源（GPL-3.0） | 這個倉庫 |
+| 普通版本 CCA | <img src="assets/logo/cca-app-64.png" width="40" alt="CCA"> | 1.0.2-oss | 開源（GPL-3.0） | 這個倉庫 |
 | 俳句 Haiku | <img src="assets/editions/haiku/icon-64.png" width="40" alt="Haiku"> | 0.0.2，Android | 開源（GPL-3.0） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special/tree/haiku) 的 `haiku` 分支 |
 | 十四行詩 Sonnet | <img src="assets/editions/sonnet/icon-64.png" width="40" alt="Sonnet"> | 開發與規劃中 | 開源（GPL-3.0） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special/tree/sonnet) 的 `sonnet` 分支 |
 | 大師巨作 Opus | <img src="assets/editions/opus/icon-64.png" width="40" alt="Opus"> | 開發與規劃中 | 開源（GPL-3.0） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special/tree/opus) 的 `opus` 分支 |
-| 寓言 Fable | <img src="assets/editions/fable/icon-64.png" width="40" alt="Fable"> | 0.0.3 | 閉源，免費提供 | 不公開 |
+| 寓言 Fable | <img src="assets/editions/fable/icon-64.png" width="40" alt="Fable"> | 0.0.5 | 閉源，免費提供 | 不公開 |
 
 ## 概覽
 
@@ -47,11 +54,11 @@ CCA 起於作者使用 OpenAI 為 Claude Code 開發的 Codex 插件時，對雙
 
 0.9.0 新增需求對應的主機驗證證據、相同案例的修正前後重現，以及可操作的網站預覽與元素留言。[操作與限制](docs/quality.md)。
 
-0.8.0 補上工作計畫的編輯、版本留言、核准與逐項驗收；跨對話收件匣；可編輯 Markdown 審查關注點；2 至 4 位模型的獨立唯讀意見與共識提案；以及按任務建立 Git worktree、預演衝突與確認合併。桌面版入口在側欄「任務控制」及頻道設定；CLI 使用相同核心。[操作與限制](docs/collaboration.md) · [驗證紀錄](docs/visual-identity-validation.md)。
+0.8.0 補上工作計畫的編輯、版本留言、核准與逐項驗收；跨對話收件匣；可編輯 Markdown 審查關注點；2 至 4 位模型的獨立唯讀意見與共識提案；以及按任務建立 Git worktree、預演衝突與確認合併。桌面版入口在側欄「任務控制」及頻道設定；CLI 使用相同核心。[操作與限制](docs/collaboration.md) · 驗證紀錄。
 
 0.6.0 新增可選用的多代理流程：群組側欄按「多代理流程 › 設定」，可排序 Claude Code、Codex、API 及唯讀本地模型；預設最多三次完整循環。既有群組保持原本流程，私訊與插件沿用。操作、API 計費、共享記憶、MCP 權限、截圖與隔離環境限制見 [多代理平台](docs/platform.md)。
 
-0.6.1 補上共用沙盒的結束碼、輸出上限與暫存資料清理；Claude 實際呼叫及容器隔離結果見 [沙盒驗證](docs/sandbox-validation.md)。
+0.6.1 補上共用沙盒的結束碼、輸出上限與暫存資料清理；Claude 實際呼叫及容器隔離結果見 沙盒驗證。
 
 0.6.2 的多代理流程改用模型下拉選單；API 依所選供應商自動載入及填入模型，失敗時可重試，不需要輸入模型 ID。
 
@@ -244,8 +251,12 @@ src/process.*  子程序（管線、Job 物件，關閉 CCA 時整棵程序樹�
 
 操作、版本後綴（重大規範化）、發行清單及失敗復原方式見 [工作台與軟體更新](docs/workbench.md)。
 
+## 參與貢獻
+
+建置、測試與提交方式見 [貢獻指南](CONTRIBUTING.md)。每個拉取請求都要通過 [CI](.github/workflows/ci.yml)：倉庫衛生、風格、兩個 Windows 映像檔上的建置與原生測試、假後端與真實 ConPTY 的模擬測試、真實 Edge 的介面測試、AddressSanitizer 記憶體測試、極端環境測試與 CodeQL（內容與限制見 [docs/ci.md](docs/ci.md)）。安全問題請依 [安全政策](SECURITY.md) 私下回報。
+
 ## 授權
 
-CCA 以 [GNU GPL v3](LICENSE) 授權。`third_party/` 內的 Microsoft WebView2 SDK 依它自己的授權條款，不在 GPL 範圍內。
+CCA 以 [GNU GPL v3](LICENSE) 授權。建置時從 NuGet 下載（雜湊固定）的 Microsoft WebView2 SDK 依它自己的授權條款（`third_party/webview2/LICENSE.txt`），不在 GPL 範圍內。
 
 使用 Claude Code、Codex 等第三方命令列工具時，須遵守各服務自己的條款；CCA 不代為取得、也不轉賣任何訂閱或額度。

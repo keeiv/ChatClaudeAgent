@@ -1,6 +1,6 @@
 # ChatClaudeAgent（CCA）開發指南
 
-這份檔案寫給所有替 CCA 寫程式的 AI：Claude Code 經由 `CLAUDE.md` 讀它，Codex 直接讀它，CCA 會把「審查重點」那一段交給本地審查員。人也可以照著做。改了專案的做法，就要回來更新這份檔案。
+這份檔案寫給所有替 CCA 寫程式的 AI：Claude Code 等工具直接讀它，Codex 直接讀它，CCA 會把「審查重點」那一段交給本地審查員。人也可以照著做。改了專案的做法，就要回來更新這份檔案。
 
 ## 這是什麼
 
@@ -24,6 +24,7 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 | `src/workflow.*` | 協作流程圖的狀態（桌面和 CLI 共用） |
 | `src/regression_guard.cpp` | 審查者測試守門：審查回合改了檔案後跑使用者設定的測試指令，轉紅且審查前是綠的就還原，結果寫進聊天室與任務紀錄（設計見 `docs/reviewer-guard.md`） |
 | `src/editions.*`、`src/version.hpp` | 普通版本與特殊版本：`CCA_EDITION`、`edition.json` 標記，以及特殊版本不支援設定的保存與還原（`editions\ordinary-vault.json`）。設計見 `docs/editions.md` |
+| `src/haiku_sim.*`、`haiku_window.*` | Haiku 手機模擬：桌面版開手機大小視窗，載入未修改的 Haiku APK，並扮演它的 Android 殼層（專案、還原點、金鑰、模型請求、預覽）。見 `docs/phone-simulator.md` |
 | `src/extensions.*`、`ui/extensions.js`、`examples/plugins/` | CCA 插件：只含資料的 `plugin.json`（主題、對話模式、指令），雜湊核准與驗證。格式見 `docs/plugins.md` |
 | `src/task_ledger.*`、`pipeline.*` | 持久任務、交接索引、順序多代理、實際 Git 差異與審查閘門；沒有 pipeline 的群組沿用既有流程 |
 | `src/collaboration.*`、`opinion.cpp`、`workspaces.*` | 版本化計畫、跨對話收件匣、審查關注點、獨立唯讀意見與 Git worktree 合併；介面在 `ui/collaboration.js` |
@@ -51,7 +52,8 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 | `tests/` | 單元測試、協定測試、ConPTY 與 DOM 測試、假的 Claude CLI |
 | `tools/` | 資源產生、圖標產生、風格檢查、介面開發伺服器 |
 | `docs/` | 設計紀錄與驗證紀錄 |
-| `third_party/webview2/` | WebView2 SDK，不要修改 |
+| `third_party/webview2/` | WebView2 SDK，不要修改。公開倉庫不含它的二進位檔，`build.bat` 缺檔時經 `tools/fetch_webview2.py` 依 SHA-256 下載固定版本 |
+| `.github/`、`tools/check_public.py`、`check_workflows.py`、`check_links.py`、`run_native_tests.py`、`tests/run_browser_tests.py`、`tests/extreme_env.py`、`tests/memory_test.cpp` | 公開倉庫的 CI 與其本機對應版本。貢獻方式見 [CONTRIBUTING.md](CONTRIBUTING.md)。設計見 `docs/ci.md` |
 
 ## 建置與測試
 
@@ -63,6 +65,8 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 .\build.bat test            # 單元測試
 .\build.bat takeover-test   # 接手與子程序協定測試（模擬後端，不花額度）
 .\build.bat desk-test       # 佇列、來源紀錄、版面及更新版本規則（隔離資料）
+.\build.bat haiku-sim-test     # Haiku 手機模擬的原生部分：解壓縮、APK、專案、DPAPI、橋接（不連外）
+.\build.bat haiku-window-test  # 真的開出模擬視窗並驅動橋接，存截圖（需要 WebView2 與已建置的 APK）
 .\build.bat edition-test    # 版本路線選項（真實執行檔）、保存與還原、CCA 插件
 .\build.bat appearance-test # 主題、模型路由、保存失敗及真實模擬 CLI 參數
 .\build.bat gemini-test     # Gemini 真實子程序模擬協定，不使用模型額度
@@ -98,6 +102,13 @@ node tests\group_navigation_browser.cjs # 群組導覽、拖曳與排序失敗�
 node tests\profile_media.cjs # 裁切幾何與模型日期；瀏覽器測試見 docs\profiles.md
 node tests\pipeline_models_browser.cjs # 模型下拉選單、API 自動載入與失敗重試；需要 Playwright 及介面開發伺服器
 python tests\test_check_style.py             # 風格工具的回歸測試，使用暫存檔與隔離 Git 倉庫
+.\build.bat memory-test     # 吃外部輸入的程式（JSON、diff、ZIP、專案檔）的洩漏量；先設 $env:CCA_SANITIZE=1 再跑就是 AddressSanitizer 版
+python tools\run_native_tests.py             # 全部原生測試目標，失敗也繼續跑完並逐項回報
+python tests\run_browser_tests.py            # 全部 DOM 與 Edge 測試，自己啟動 UI 伺服器；需 Playwright 與 LinkeDOM（版本見 docs\ci.md）
+python tests\extreme_env.py                  # 極端環境：記憶體上限、單核心、剝離環境、怪路徑、損毀資料、唯讀資料夾、第二個實例
+python tools\check_public.py                 # 倉庫衛生：金鑰、個人路徑、二進位檔、內部紀錄
+python tools\check_workflows.py              # 工作流程：SHA 釘版、權限、逾時
+python tools\check_links.py                  # Markdown 相對連結
 python tools\check_style.py --format --js   # 交出前必跑，見「程式碼風格」
 ```
 
@@ -107,6 +118,7 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - 測試一律用 `CCA_DATA_DIR` 指到暫存資料夾，不要碰使用者真正的 `%APPDATA%\CCA`。要 Claude 回覆時用 `tests\fake_claude.cmd`（在測試資料夾的 `settings.json` 設 `claudePath`）。
 - 會用到使用者訂閱額度的測試（`build.bat live`）要先問過使用者。額度不足、跳過與強制停止的測試用 `tests/takeover_test.cpp` 的替身（`CCA_TEST_CODEX_QUOTA`、`CCA_TEST_GEMINI_QUOTA`），不消耗額度。
 - `build\sandbox_live.exe <claude.exe> --connect-only` 只測原生工作階段及 MCP 連線，不發送提示詞；`--run` 會使用 Claude 訂閱額度，必須先取得使用者授權。測試使用獨立的暫存專案與 `CCA_DATA_DIR`。
+- 公開倉庫的 CI（[ci.yml](.github/workflows/ci.yml)）把上面的檢查分成衛生、建置與風格、原生測試、模擬測試、介面測試、記憶體測試、極端環境七組，加上 CodeQL；`CI 全部通過` 彙整全部。紅燈要找原因，不能刪測試或放寬檢查讓它過。工作流程的外部 Action 一律釘完整 SHA、頂層權限唯讀、每個工作有逾時。
 - 不能用某項驗證時（例如沒有瀏覽器、沒有真實訂閱），回報時直接寫「沒有驗證」，不要寫成通過。
 - 明確指定 `--format` 或 `--js` 卻缺少工具時，風格檢查會失敗；`--format` 也需要 Git 與至少一個提交作為基準。先補齊環境再重跑，不能把未執行的檢查當成通過。
 
@@ -140,6 +152,7 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - 審查者測試守門只採用主機量到的結束碼：指令由使用者在設定輸入（單行、500 字、無控制字元），模型不能改；只有「審查後紅、審查前綠」才還原，指令無法啟動或逾時一律不還原並標示沒有驗證；還原前先保存審查者的結果檢查點。測試用假後端搭真實 git，見 `tests/takeover_test.cpp`。
 - MCP 工具釘住：API 代理每次 `mcp_discover`／`mcp_call` 前重新取得工具清單，描述雜湊與核准時不同或沒釘住就阻擋；釘住只能經 `toolserver.pin`，主機以新清單核對使用者看到的雜湊，伺服器指令或參數變更即作廢所有釘住。釘住不證明工具行為安全。
 - 特殊版本（Haiku、Sonnet、Opus、Fable）是同一套原始碼以 `CCA_EDITION` 建置的另一條產品路線，版本號自成一列。更新只自動安裝同一路線的新版；切換路線一律由使用者在更新頁或 `/update switch`、`/update return` 確認。特殊版本第一次啟動時先把不支援的設定寫進 vault，寫入成功才停用它們；普通版本（1.0.1-astra 以後）啟動時還原並封存 vault。新增「特殊版本不支援」的設定時，要同時加進 `src/editions.cpp` 的清單。
+- Haiku 手機模擬不改 Haiku：只讀安裝資料夾裡、與發行清單核對過的 APK，編輯頁原封不動，橋接由 CCA 在載入前注入；預覽一律在沒有橋接的 WebView。視窗與橋接要和 Android 版同樣守規則（路徑只在專案內、金鑰不進頁面、模型請求只經固定的 HTTPS 端點）。為了讓它能在電腦上開啟而修改 `android/haiku` 是不允許的；差異（Windows 檔名、DPAPI）寫在模擬端。
 - CCA 插件只有資料：主題只能用既有形狀與內建主題的裝置、顏色須為 `#rrggbb` 且文字對比至少 4.5:1；模式只能設定白名單欄位，不得設定 bypass 或測試指令；指令不得蓋過內建指令。啟用時記下 `plugin.json` 的 SHA-256，檔案改動即停用。特殊版本不載入插件。
 - 多代理交接必須先保存檢查點與任務，再啟動下一位。不能只依模型說法判定修改或測試成功；審查結論須位於結尾，沒有主機取得的測試結束碼就不能通過必要測試閘門。
 - API Key 只走工作程序 stdin IPC 與 DPAPI 檔案，不進設定、提示詞或聊天。工具只開放專案內的相對路徑，拒絕連結、憑證及環境檔；本地代理沒有寫入、執行或 MCP 呼叫工具。
@@ -191,7 +204,7 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - 交出前跑 `python tools\check_style.py --format --js` 和相關測試。
 - 協作控制改動另跑 `build.bat collaboration-test`、`build.bat takeover-test` 與 `tests/collaboration_browser.cjs`。後者需 Playwright、Edge 與本機 UI 伺服器；原生測試使用獨立資料與真實 Git 測試倉庫，不能拿使用者專案測合併。
 - 計畫需先保存再核准、再執行，留言會更新版本並取消核准與驗收；模型完成僅為待驗收。意見模式使用獨立唯讀 session，不繼承原對話記憶，不允許升權。worktree 合併必須比對預覽的來源及目標提交，不能自動暫存、強制覆寫衝突或刪除 worktree。
-- 提交訊息第一行用英文祈使句，例如 `Add workflow view to the CLI`，之後空一行用中文或英文說明原因。一個提交做一件事。
+- 提交訊息用 `類型: 主旨`（`feat:`、`fix:`、`docs:`、`test:`、`chore:`），主旨用英文，例如 `fix: keep model fields when saving the vault`，之後空一行用中文或英文說明原因。一個提交做一件事；不加共同作者（Co-Authored-By）行。
 - `build/` 不進版本控制（`.gitignore`），`docs/` 裡指向 `build/` 的驗證連結只在本機有效。
 - 只有使用者要求時才提交或推送；不要改寫已經存在的歷史。
 - CCA 的回滾檢查點是另外的影子倉庫（`%LOCALAPPDATA%\CCA\snapshots`），和這個專案的 `.git` 互不影響。
