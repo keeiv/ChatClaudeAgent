@@ -2,8 +2,9 @@
 // Built normally it checks that private bytes stay flat over thousands of iterations; built with CCA_SANITIZE=1
 // (MSVC AddressSanitizer) the same loops also catch overflows, use-after-free and leaks. Inputs come from a fixed-seed
 // generator so a failure reproduces. No network, no models; the data folder is a fresh temp directory.
-#include <psapi.h>
 #include <windows.h>
+
+#include <psapi.h>
 
 #include <cstdint>
 #include <cstdio>
