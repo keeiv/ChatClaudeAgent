@@ -138,7 +138,7 @@ jobs:
         run: |
           foreach ($target in 'cli', 'pty', 'takeover-test', 'desk-test', 'sandbox-live') {
             cmd /c ".\build.bat $target"
-            if ($LASTEXITCODE -ne 0) { throw "build.bat $target failed" }
+            if ($LASTEXITCODE -ne 0) { throw "build.bat $target failed (exit $LASTEXITCODE)" }
           }
       - name: 終端機版在真實 ConPTY 裡的情境
         run: python tests/cli_smoke.py
@@ -232,7 +232,7 @@ jobs:
         run: |
           foreach ($target in 'test', 'cli', 'pty', 'takeover-test') {
             cmd /c ".\build.bat $target"
-            if ($LASTEXITCODE -ne 0) { throw "build.bat $target failed" }
+            if ($LASTEXITCODE -ne 0) { throw "build.bat $target failed (exit $LASTEXITCODE)" }
           }
       - name: 極端環境情境
         run: python tests/extreme_env.py
