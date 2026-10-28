@@ -1,0 +1,25 @@
+# C++ style for CCA, measured from the existing code (src/*.cpp, src/*.hpp).
+# Use it on the lines you change: clang-format -i --lines=<from>:<to> file, or
+# python tools/check_style.py --format to check changed files. Do not reformat whole
+# files that you are not otherwise editing.
+BasedOnStyle: Google
+IndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Always
+AllowShortLambdasOnASingleLine: All
+BreakBeforeBraces: Attach
+IndentCaseLabels: false
+NamespaceIndentation: None
+FixNamespaceComments: true
+SpacesBeforeTrailingComments: 2
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+Cpp11BracedListStyle: true
+BinPackArguments: true
+BinPackParameters: true

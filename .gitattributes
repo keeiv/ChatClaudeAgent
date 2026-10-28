@@ -1,0 +1,16 @@
+# Text is stored with LF; batch files and PowerShell scripts are checked out with CRLF
+# because cmd.exe and Windows PowerShell expect it.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Vendored SDKs are kept byte for byte as they were published.
+third_party/** -text
+
+*.png binary
+*.ico binary
+*.exe binary
+*.lib binary
+*.dll binary
+*.winmd binary
