@@ -58,4 +58,4 @@
 | `build/ChatClaudeAgent-1.0.0.exe` | `498c5a8446898c3df10499c6f9a15dd8006f90ebf62e413a783f9f783a693f54` |
 | `build/ChatClaudeAgent-CLI-1.0.0.exe` | `bc911f225b6e9b28eb2958a724ccdb0869a846a2cdbc8a0fe7b108f0da27754d` |
 
-[各尺寸與字標預覽](../build/brand-1.0/identity.png) · [桌面畫面](../build/brand-1.0/desktop.png) · [登入畫面](../build/brand-1.0/gate.png) · [CLI 實際標題](../build/brand-1.0/cli-header.png) · [資源核對結果](../build/brand-1.0/resources.json)
+各尺寸與字標預覽 · 桌面畫面 · 登入畫面 · CLI 實際標題 · 資源核對結果

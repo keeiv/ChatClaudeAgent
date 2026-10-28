@@ -90,4 +90,4 @@ worktree 放在 `%LOCALAPPDATA%\CCA\worktrees`，本版不自動刪除，以免�
 
 協作決策以原子寫入保存到 `%APPDATA%\CCA\collaboration\<對話>.json`，關注點在 `settings.json`，對話、模型用量與任務紀錄沿用既有儲存。測試設定 `CCA_DATA_DIR`，worktree 也會轉到隔離測試目錄。
 
-驗證分成真實 C++ 存檔／子程序協定／Git 與瀏覽器模擬互動。模擬模型沒有使用訂閱或付費 API，也不能代表真實模型品質；紀錄見 [本次驗證](visual-identity-validation.md)。
+驗證分成真實 C++ 存檔／子程序協定／Git 與瀏覽器模擬互動。模擬模型沒有使用訂閱或付費 API，也不能代表真實模型品質；紀錄見 本次驗證。

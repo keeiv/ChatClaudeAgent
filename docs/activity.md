@@ -44,4 +44,4 @@ Gemini 的適用對象使用 `"agent": "gemini"`。若本機預設檔明確設�
 
 測試使用隔離資料與假後端，未呼叫實際付費模型。已檢查兩個 EXE 不含原先角色名稱與作品內容。這次本機既有的四份預設另存於資料目錄，不隨原始碼或 EXE 交付。
 
-[桌面預覽](../build/usage-persona-upgrade/activity-desktop.png) · [窄視窗](../build/usage-persona-upgrade/activity-narrow.png) · [關於頁](../build/usage-persona-upgrade/about-purpose.png) · [資源核對](../build/usage-persona-upgrade/resources.json)。截圖使用瀏覽器測試資料，實際用量只取自已保存紀錄。
+桌面預覽 · 窄視窗 · 關於頁 · 資源核對。截圖使用瀏覽器測試資料，實際用量只取自已保存紀錄。

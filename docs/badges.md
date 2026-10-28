@@ -22,9 +22,9 @@ Discord [2026-10-21 更新的官方說明](https://support.discord.com/hc/en-us/
 | `pioneer` | 先鋒支持者 | 銅色前進旗與白色前向符號，紀念早期參與 |
 | `member` | 成員 | 鋼藍單人輪廓，所有安裝內建 |
 
-歷代圖標實際取自 `build/CCA-review.exe`、`build/ChatClaudeAgent-0.9.0.exe`、`build/ChatClaudeAgent-1.0.0.exe` 的 PE 圖標資源，沒有執行舊程式。比較圖：[本機歷代來源](../build/badges/research/history.png)。最早可取得的 `CCA-review.exe` 為交環；沒有據此推測一個不存在的版本日期。
+歷代圖標實際取自 `build/CCA-review.exe`、`build/ChatClaudeAgent-0.9.0.exe`、`build/ChatClaudeAgent-1.0.0.exe` 的 PE 圖標資源，沒有執行舊程式。比較圖：本機歷代來源。最早可取得的 `CCA-review.exe` 為交環；沒有據此推測一個不存在的版本日期。
 
-每款有 16／24 像素、彩色／單色版本，共 28 個 SVG。16 像素不是直接縮小大圖：人物頭部與環形留白分別調整。所有圖形均為路徑／圓形，沒有漸層、發光、濾鏡、字體或外部資源。大型預覽：[圖形校樣](../build/badges/design-proof.png)。
+每款有 16／24 像素、彩色／單色版本，共 28 個 SVG。16 像素不是直接縮小大圖：人物頭部與環形留白分別調整。所有圖形均為路徑／圓形，沒有漸層、發光、濾鏡、字體或外部資源。大型預覽：圖形校樣。
 
 ## 位置與使用
 

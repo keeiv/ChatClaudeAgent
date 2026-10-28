@@ -125,8 +125,8 @@ Codex 在 Windows 的沙箱常因 Codex 桌面版鎖住 `node_repl.exe` 而啟�
 
 ## 驗證與限制
 
-測試命令與本輪結果見 [驗證紀錄](platform-validation.md)。API／CLI 協作測試使用本機替身服務及子程序，不能當成真實訂閱或 API 帳戶已實測。原生 WebView2 視窗也需要另外驗證。
+測試命令與本輪結果見 驗證紀錄。API／CLI 協作測試使用本機替身服務及子程序，不能當成真實訂閱或 API 帳戶已實測。原生 WebView2 視窗也需要另外驗證。
 
-0.6.1 已補測 Claude Code 2.1.308 經正式轉接器載入 `--mcp-config`，並真正呼叫共用沙盒。容器隔離、失敗結束碼、輸出上限與清理的實際證據見 [沙盒驗證](sandbox-validation.md)。本輪沒有請 GPT 模型自行選擇工具，也沒有操作原生視窗；這些範圍不能當成已驗證。
+0.6.1 已補測 Claude Code 2.1.308 經正式轉接器載入 `--mcp-config`，並真正呼叫共用沙盒。容器隔離、失敗結束碼、輸出上限與清理的實際證據見 沙盒驗證。本輪沒有請 GPT 模型自行選擇工具，也沒有操作原生視窗；這些範圍不能當成已驗證。
 
 參考：[Responses 工具呼叫](https://developers.openai.com/api/docs/guides/function-calling)、[MCP stdio 協定](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports)、[Docker 執行參數](https://docs.docker.com/engine/containers/run/)、[Windows Sandbox 配置](https://learn.microsoft.com/en-us/windows/security/application-security/application-isolation/windows-sandbox/windows-sandbox-configure-using-wsb-file)。本輪選擇現有 Python 標準函式庫與可選 Docker，沒有另建 JavaScript 打包系統。

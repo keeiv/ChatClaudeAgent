@@ -38,4 +38,4 @@ Discord 的[群組私訊說明](https://support.discord.com/hc/en-us/articles/22
 
 群組導覽檢查包括：審查窗格與成員名單互切、1000 × 720 側欄抽屜，以及 1000 × 600 視窗中的捲動位置保留。活動測試補上等待下一個繪製影格的條件，避免把上一份 365 格畫面誤認為新回應；測試驅動器的取消鍵使用已定義的 `esc`。沒有變更模型協定或使用真實訂閱額度。
 
-畫面：[群組工作區](../build/group-navigation/groups.png)、[私人訊息首頁](../build/group-navigation/home.png)、[窄視窗](../build/group-navigation/groups-narrow.png)。桌面與 CLI 使用各自的 `1.0.0-navigation.exe` 輸出，保留既有執行檔；交付前另以 `tools/verify_resources.py` 核對內嵌 UI、工作程序與圖標是否符合來源。
+畫面：群組工作區、私人訊息首頁、窄視窗。桌面與 CLI 使用各自的 `1.0.0-navigation.exe` 輸出，保留既有執行檔；交付前另以 `tools/verify_resources.py` 核對內嵌 UI、工作程序與圖標是否符合來源。

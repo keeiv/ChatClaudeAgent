@@ -75,8 +75,8 @@ node tests/workflow_recording.cjs build/cli-smoke/run-實際目錄/flow
 
 需要檢查四位成員的終端渲染器時，可設定 `CCA_TEST_WORKFLOW_OUT` 後執行 `build/tests.exe`；這會額外輸出 `four.vt`、兩張快照位置與狀態 JSON，內容明確使用測試事件。桌面瀏覽器預覽可執行 `node tools/serve_ui.js`，開啟 `http://localhost:5178/#flow`，以模擬後端示範四位成員。
 
-本次執行結果、記憶體樣本和發行檔見 [0.3.0 驗證紀錄](workflow-validation.md)。
+本次執行結果、記憶體樣本和發行檔見 0.3.0 驗證紀錄。
 
-後續的窄終端修正、成員異動處理與瀏覽器實繪檢查見 [第一輪審查紀錄](workflow-review.md)。
+後續的窄終端修正、成員異動處理與瀏覽器實繪檢查見 第一輪審查紀錄。
 
-私訊接手後的節點判斷與隱藏驗證見 [私訊流程複審](workflow-dm-review.md)。
+私訊接手後的節點判斷與隱藏驗證見 私訊流程複審。
