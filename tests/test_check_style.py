@@ -87,6 +87,15 @@ class ChangedLines(FileFixture):
         self.write(self.name, b"int first = 1;\nint second=2;\n")
         self.assertEqual(style.changed_ranges(), {self.name: [(2, 2)]})
 
+    def test_base_revision_selects_the_compared_lines(self):
+        # CI compares a pull request against its base commit, not against its own HEAD.
+        self.write(self.name, b"int first = 1;\nint second=2;\n")
+        self.git("add", "--", self.name)
+        self.git("-c", "user.name=CCA test", "-c", "user.email=cca-test@localhost", "-c", "commit.gpgsign=false",
+                 "commit", "-qm", "Add a second line", "--no-verify")
+        self.assertEqual(style.changed_ranges(), {})
+        self.assertEqual(style.changed_ranges("HEAD~1"), {self.name: [(2, 2)]})
+
     def test_untracked_unicode_filename_is_checked(self):
         name = "\u65b0\u6a94.cpp"
         self.write(name, b"int value=1;\n")

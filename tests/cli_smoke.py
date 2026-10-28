@@ -449,7 +449,7 @@ until 第三位審查者 10000
 wait 300
 type /update
 key enter
-until 遠端發行站未啟用 10000
+until 資料夾中沒有安裝包 10000
 snap update
 type /exit
 key enter

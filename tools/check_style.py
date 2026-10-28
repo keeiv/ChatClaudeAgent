@@ -126,17 +126,17 @@ def find_clang_format():
     return None
 
 
-def changed_ranges():
-    """{path: [(first, last), ...]} for C++ lines added or changed since HEAD (and new files)."""
+def changed_ranges(base="HEAD"):
+    """{path: [(first, last), ...]} for C++ lines added or changed since `base` (HEAD by default; new files count whole)."""
     ranges = {}
     patterns = ("--", "*.cpp", "*.hpp", "*.h")
     # NUL-separated names avoid Git's quoted Unicode paths. Parse each file's hunks,
     # not the quoted +++ headers, and disable external diff tools for predictable output.
-    tracked = git("diff", "--name-only", "--no-renames", "--diff-filter=ACMT", "-z", "HEAD", *patterns, required=True)
+    tracked = git("diff", "--name-only", "--no-renames", "--diff-filter=ACMT", "-z", base, *patterns, required=True)
     for path in tracked.split("\0"):
         if not path or path.split("/")[0] in SKIP_DIRS or not os.path.isfile(os.path.join(ROOT, path)):
             continue
-        diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "HEAD", "--", path,
+        diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", base, "--", path,
                    required=True)
         for line in diff.splitlines():
             if not line.startswith("@@ "):
@@ -166,6 +166,7 @@ def main():
     ap.add_argument("--fix", action="store_true")
     ap.add_argument("--format", action="store_true")
     ap.add_argument("--js", action="store_true")
+    ap.add_argument("--base", default="HEAD", help="git revision the changed C++ lines are measured against (CI passes the pull request base)")
     args = ap.parse_args()
 
     bad = 0
@@ -185,7 +186,7 @@ def main():
             print("無法檢查 C++ 格式：需要 Git 倉庫與至少一個提交作為比對基準")
         else:
             try:
-                changed = changed_ranges()
+                changed = changed_ranges(args.base)
             except RuntimeError as error:
                 bad += 1
                 print(error)

@@ -51,6 +51,8 @@ const { chromium } = require('playwright');
     check(tip.x >= 0 && tip.x + tip.width <= 1440, 'tooltip stays in viewport');
     await page.screenshot({ path: path.join(out, 'activity-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 960, height: 850 });
+    // The resize reaches the page asynchronously; wait for the layout instead of measuring a stale one on a busy machine.
+    await page.waitForFunction(() => innerWidth === 960 && (() => { const el = document.querySelector('.activity-scroll'); return el && el.scrollWidth > el.clientWidth; })(), null, { timeout: 5000 }).catch(() => {});
     check(await page.locator('.activity-scroll').evaluate(el => el.scrollWidth > el.clientWidth), 'narrow layout scrolls only the calendar');
     check(await page.locator('.activity-card').evaluate(el => el.getBoundingClientRect().right <= innerWidth), 'card does not overflow narrow viewport');
     await cells.last().focus();

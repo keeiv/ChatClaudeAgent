@@ -40,7 +40,9 @@ def main():
     lines = ["until /help 15000", "wait 1500"]
     for command in commands:
         lines += ["type " + command, "key enter", "wait 400"]
-    lines += ["until targetBranch 15000", "type /workspace check", "key enter", "until clean 15000",
+    # The JSON reply is wrapped at the terminal width, so wait for a key near its start ("origin"), which stays whole
+    # whatever the temp path's length; a later key such as targetBranch can be split in two by the wrap.
+    lines += ['until "origin" 15000', "type /workspace check", "key enter", "until clean 15000",
               "wait 400", "type /workspace merge", "key enter", "until merged 15000", "wait 400",
               "type /opinions claude,codex 如何檢查輸入？", "key enter", "until 效能仍需量測 20000",
               "wait 400", "type /opinions", "key enter", "wait 200", "type /opinion-plan", "key enter",
