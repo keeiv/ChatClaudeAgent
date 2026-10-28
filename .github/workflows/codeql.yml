@@ -14,6 +14,10 @@ concurrency:
   group: codeql-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # build.bat 的 Python 工具會印出中文；Windows 預設的 cp1252 編碼會讓它當掉。
+  PYTHONUTF8: "1"
+
 jobs:
   analyze:
     name: 程式碼掃描（${{ matrix.language }}）
