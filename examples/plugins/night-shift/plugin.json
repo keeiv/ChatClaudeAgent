@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "id": "night-shift",
+  "name": "夜班",
+  "version": "1.0.0",
+  "author": "MoriTeahouse",
+  "description": "深夜審查用：一款借用追獵行動裝置的餘燼色主題、一個嚴格審查模式，以及一個安全審查指令。",
+  "themes": [
+    {
+      "id": "ember",
+      "name": "餘燼",
+      "description": "追獵行動的反向切角與準星，換成餘燼橙。",
+      "scheme": "dark",
+      "shape": "slash",
+      "base": "hunt",
+      "palette": {
+        "rail": "#060504",
+        "side": "#0b0908",
+        "chat": "#100d0b",
+        "panel": "#0b0908",
+        "input": "#1a1512",
+        "hover": "#221b16",
+        "selected": "#33210f",
+        "line": "#3d2f24",
+        "text": "#eee4da",
+        "muted": "#b3a294",
+        "signal": "#ff8a3d",
+        "brand": "#c8551d",
+        "ink": "#ffffff",
+        "accents": ["#ff8a3d", "#c8551d", "#7a3410", "#ffd166", "#8a8a8a", "#060504"],
+        "display": "Bahnschrift, \"Segoe UI\", \"Microsoft JhengHei UI\", sans-serif"
+      }
+    }
+  ],
+  "modes": [
+    {
+      "id": "strict",
+      "name": "嚴格審查",
+      "description": "改檔前先問、來回 10 輪、開啟測試守門。",
+      "scope": "group",
+      "settings": { "permission": "ask", "maxRounds": 10, "regressionGuard": true },
+      "instructions": "每一項修改都要說明它修正的具體失敗、重現步驟與實際執行的測試結果；沒有重現就不要修改。"
+    }
+  ],
+  "commands": [
+    {
+      "name": "security",
+      "description": "以安全審查的角度檢查",
+      "scope": "any",
+      "template": "請以安全審查的角度檢查以下範圍：{{input}}\n\n逐項列出輸入驗證、權限、機密外洩與注入風險，每一項附檔案與行號。"
+    }
+  ]
+}

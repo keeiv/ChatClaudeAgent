@@ -1,0 +1,363 @@
+/* Theme signatures. Every built-in theme keeps CCA's structure (rail, channels, chat, members) and borrows a few
+   devices from its source: the way it shapes the user's turns, its section marks, its controls and one background
+   motif. Colors and font stacks come only from tokens that tools/make_themes.py generates from config/themes.json;
+   docs/themes.md lists the source each device was taken from. The native theme ("cca") never enters this file. */
+
+/* ------------------------------------------------------------ shared geometry */
+:root { --theme-radius: 12px; --theme-control-radius: 8px; --theme-pill: 8px; --theme-message-width: 1080px;
+  --theme-shadow: 0 8px 28px color-mix(in srgb, var(--mask-ink) 22%, transparent); }
+:root[data-scheme="light"] { --theme-shadow: 0 8px 28px color-mix(in srgb, var(--mask-ink) 10%, transparent); }
+:root[data-shape="soft"] { --theme-radius: 14px; --theme-control-radius: 10px; --theme-pill: 999px; --theme-message-width: 1040px; }
+:root[data-shape="paper"] { --theme-radius: 12px; --theme-control-radius: 8px; --theme-pill: 8px; --theme-message-width: 880px; }
+:root[data-shape="round"] { --theme-radius: 24px; --theme-control-radius: 16px; --theme-pill: 999px; --theme-message-width: 960px; }
+:root[data-shape="editor"] { --theme-radius: 4px; --theme-control-radius: 3px; --theme-pill: 3px; }
+:root[data-shape="sticker"] { --theme-radius: 12px; --theme-control-radius: 10px; --theme-pill: 10px; }
+:root[data-shape="sky"] { --theme-radius: 22px; --theme-control-radius: 16px; --theme-pill: 999px; --theme-message-width: 960px; }
+:root[data-shape="tactical"] { --theme-radius: 0; --theme-control-radius: 0; --theme-pill: 0; }
+:root[data-shape="signal"] { --theme-radius: 10px; --theme-control-radius: 6px; --theme-pill: 6px; }
+:root[data-shape="ribbon"] { --theme-radius: 18px; --theme-control-radius: 14px; --theme-pill: 999px; --theme-message-width: 960px; }
+:root[data-shape="pumpkin"] { --theme-radius: 16px; --theme-control-radius: 10px; --theme-pill: 999px; --theme-message-width: 960px; }
+:root[data-shape="slash"] { --theme-radius: 0; --theme-control-radius: 0; --theme-pill: 0; }
+:root[data-shape="folio"] { --theme-radius: 2px; --theme-control-radius: 2px; --theme-pill: 2px; --theme-message-width: 900px; }
+
+:root:where([data-theme]:not([data-theme="cca"])) :is(.btn, .chip, .tag, .app-tag, .phase-tag, .guard-tag, .daily-tag, .plan-badge,
+  .act-row .kind) { clip-path: none; border-radius: var(--theme-pill); }
+:root:where([data-theme]:not([data-theme="cca"])) :is(.input, .select, .seg, .q-opt, .perm-opt, .verdict, .q-head, .rv-file) {
+  clip-path: none; border-radius: var(--theme-control-radius); }
+:root:where([data-theme]:not([data-theme="cca"])) :is(.card, .embed, .modal, .gate-card, .acct-card, .banner, .toast, .stat-tile,
+  .flow .step, .wf-node, .act-out pre, .diff, .codeblock pre) { clip-path: none; border-radius: var(--theme-radius); }
+:root:where([data-theme]:not([data-theme="cca"])) :is(.rail-btn, .rail-btn:hover, .rail-item.active .rail-btn) {
+  clip-path: none; border-radius: var(--theme-radius); }
+:root:where([data-theme]:not([data-theme="cca"])) #userbar { clip-path: none; border-radius: var(--theme-radius); border: 1px solid var(--line); }
+:root:where([data-theme]:not([data-theme="cca"])) .composer { border: 1px solid var(--line); border-radius: var(--theme-radius); background: var(--bg-input); }
+:root:where([data-theme]:not([data-theme="cca"])) .composer textarea::placeholder { color: var(--text-muted); opacity: 1; }
+:root:where([data-theme]:not([data-theme="cca"])) .msg { max-width: var(--theme-message-width); margin-inline: auto; }
+:root:where([data-theme]:not([data-theme="cca"])) .popover { border: 1px solid var(--line); border-radius: var(--theme-radius); box-shadow: var(--theme-shadow); }
+/* Themes that put the user's turns in a bubble trim the paragraph margins inside it. */
+:root:is([data-theme^="codex"], [data-theme^="claude"], [data-theme="blessing"], [data-theme^="halloween"]) .msg[data-author="user"] .msg-body > :first-child { margin-top: 0; }
+:root:is([data-theme^="codex"], [data-theme^="claude"], [data-theme="blessing"], [data-theme^="halloween"]) .msg[data-author="user"] .msg-body > :last-child { margin-bottom: 0; }
+/* The dot grid and the chamfered section mark belong to the native theme. */
+:root:where([data-theme]:not([data-theme="cca"])) .chat-scroll { background-image: none; }
+:root:where([data-theme]:not([data-theme="cca"])) :is(.card-title, .member-head)::before { clip-path: none; }
+
+/* ------------------------------------------------------------ OpenAI Codex */
+/* A quiet monochrome workspace: the user's turns sit in soft bubbles while replies run full width, the composer
+   floats as a pill, and section labels carry the CLI's >_ prompt instead of a colored mark. */
+:root[data-theme^="codex"] .chat-head { border-bottom-color: transparent; }
+:root[data-theme^="codex"] .msg[data-author="user"] .msg-body { display: inline-block; max-width: min(680px, 100%);
+  padding: 9px 16px; border-radius: 20px; background: var(--theme-a2); color: var(--header); }
+:root[data-theme^="codex"] .msg > .avatar, :root[data-theme^="codex"] :is(.member, .member-link) > .avatar { box-shadow: none; }
+:root[data-theme^="codex"] .msg-author { font-weight: 600; }
+:root[data-theme^="codex"] .composer { border-radius: 28px; padding: 4px 6px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--mask-ink) 6%, transparent), 0 10px 30px color-mix(in srgb, var(--mask-ink) 8%, transparent); }
+:root[data-theme="codex-dark"] .composer { box-shadow: 0 10px 30px color-mix(in srgb, var(--mask-ink) 40%, transparent); }
+:root[data-theme^="codex"] .composer .c-btn { width: 34px; height: 34px; margin: 5px 4px; border-radius: 50%; border: 1px solid var(--line); }
+:root[data-theme^="codex"] :is(.card-title, .member-head) { letter-spacing: .01em; font-weight: 600; }
+:root[data-theme^="codex"] :is(.card-title, .member-head)::before { content: '>_'; width: auto; height: auto; background: none;
+  font: 600 11px/1 var(--mono); color: var(--text-muted); letter-spacing: 0; }
+:root[data-theme^="codex"] :is(.group-nav-link, .dm, .side-nav) { border-radius: 10px; }
+:root[data-theme^="codex"] .group-nav-link.active { border-left: 0; padding-left: 10px; }
+:root[data-theme^="codex"] .rail-pill { background: var(--brand); }
+:root[data-theme^="codex"] .btn.primary { border-radius: 999px; }
+
+/* ------------------------------------------------------------ Anthropic Claude */
+/* Editorial reading on warm paper: replies are set in a serif with a looser measure, the user's turns rest on oat
+   paper, Claude's name and section labels carry the clay spark, and the composer is a raised sheet. */
+:root[data-theme^="claude"] .msg:not([data-author="user"]) .msg-body { font-family: var(--theme-reading); font-size: 1.05em; line-height: 1.75; }
+:root[data-theme^="claude"] .msg:not([data-author="user"]) .msg-body p { margin-block: 10px; }
+:root[data-theme^="claude"] .msg[data-author="user"] .msg-body { display: inline-block; max-width: min(720px, 100%);
+  padding: 10px 14px; border-radius: 12px; background: var(--theme-a2); color: var(--header); }
+:root[data-theme^="claude"] .msg-author.claude::before { content: '✻'; margin-right: 5px; color: var(--theme-a1); }
+:root[data-theme^="claude"] :is(.card-title, .member-head)::before { content: '✻'; width: auto; height: auto; background: none;
+  color: var(--theme-a1); font-size: 13px; line-height: 1; }
+:root[data-theme^="claude"] :is(.welcome h3, .chat-head .title > span, .group-nav-heading strong) { font-family: var(--theme-reading); font-weight: 500; }
+:root[data-theme^="claude"] .composer { border-radius: 18px; padding: 6px 4px;
+  box-shadow: 0 1px 0 var(--line), 0 8px 26px color-mix(in srgb, var(--mask-ink) 7%, transparent); }
+:root[data-theme^="claude"] .chat-head { border-bottom-color: var(--line); }
+:root[data-theme^="claude"] .group-nav-link.active { border-left-color: var(--theme-a1); }
+:root[data-theme^="claude"] .rail-pill { background: var(--theme-a1); }
+
+/* ------------------------------------------------------------ Google Gemini */
+/* Material surfaces with Gemini's four-point spark: its blue → violet → rose gradient appears only where something
+   is in focus or working, selection is a pill, and the composer is a 28 px capsule. */
+:root[data-theme^="gemini"] { --theme-spark: linear-gradient(74deg, var(--theme-a1) 0%, var(--theme-a2) 48%, var(--theme-a3) 100%); }
+:root[data-theme^="gemini"] :is(.card-title, .member-head)::before { content: ''; width: 11px; height: 11px; background: var(--theme-spark);
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%); }
+:root[data-theme^="gemini"] .composer { border: 1px solid transparent; border-radius: 28px; padding: 6px 6px;
+  background: linear-gradient(var(--bg-input), var(--bg-input)) padding-box, linear-gradient(var(--line), var(--line)) border-box; }
+:root[data-theme^="gemini"] .composer:focus-within {
+  background: linear-gradient(var(--bg-input), var(--bg-input)) padding-box, var(--theme-spark) border-box; }
+:root[data-theme^="gemini"] .welcome h3 { background: var(--theme-spark); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-theme^="gemini"] .typing b { background: var(--theme-spark); -webkit-background-clip: text; background-clip: text; color: transparent; }
+:root[data-theme^="gemini"] .tl-row.live .tl-bar i { background: var(--theme-spark); }
+:root[data-theme^="gemini"] :is(.group-nav-link, .dm, .side-nav) { border-radius: 999px; }
+:root[data-theme^="gemini"] :is(.group-nav-link.active, .dm.active, .side-nav.active) { border-left: 0; padding-left: 12px;
+  background: var(--bg-selected); color: var(--header); }
+:root[data-theme^="gemini"] .chat-head { border-bottom-color: transparent; }
+:root[data-theme^="gemini"] .rail-pill { background: var(--theme-spark); }
+
+/* ------------------------------------------------------------ Tokyo Night */
+/* An editor at night: the channel header is an open tab under a blue rule, section labels read like comments,
+   tags take the theme's syntax colors, the hint row becomes a status bar and the active rail item glows. */
+:root[data-theme="tokyo-night"] .chat-head { background: var(--bg-rail); padding-left: 0; }
+:root[data-theme="tokyo-night"] .chat-head .title { align-self: stretch; padding: 0 16px; background: var(--bg-chat);
+  border-top: 2px solid var(--signal); border-right: 1px solid var(--line); }
+:root[data-theme="tokyo-night"] :is(.card-title, .member-head) { font-family: var(--theme-display); letter-spacing: 0; }
+:root[data-theme="tokyo-night"] :is(.card-title, .member-head)::before { content: '//'; width: auto; height: auto; background: none;
+  font: 11px/1 var(--theme-display); color: var(--text-faint); }
+:root[data-theme="tokyo-night"] .phase-tag { color: var(--theme-a1); background: color-mix(in srgb, var(--theme-a1) 14%, transparent); }
+:root[data-theme="tokyo-night"] .app-tag { color: var(--theme-a2); background: color-mix(in srgb, var(--theme-a2) 14%, transparent); }
+:root[data-theme="tokyo-night"] .msg-body :not(pre) > code { color: var(--theme-a4); }
+:root[data-theme="tokyo-night"] :is(.msg-time, .gutter-time, .head-facts) { font-family: var(--theme-display); }
+:root[data-theme="tokyo-night"] .composer-hint { margin: 6px -16px 0; padding: 0 16px; background: var(--bg-rail); border-top: 1px solid var(--line);
+  font-family: var(--theme-display); font-size: 11px; color: var(--text-muted); }
+:root[data-theme="tokyo-night"] .composer-hint kbd { background: transparent; color: var(--theme-a2); font-family: var(--theme-display); }
+:root[data-theme="tokyo-night"] .msg:hover { background: color-mix(in srgb, var(--signal) 4%, transparent); }
+:root[data-theme="tokyo-night"] .rail-item.active .rail-btn { box-shadow: 0 0 0 1px var(--signal), 0 0 16px color-mix(in srgb, var(--signal) 45%, transparent); }
+:root[data-theme="tokyo-night"] .group-nav-link.active { border-left-color: var(--theme-a1); }
+
+/* ------------------------------------------------------------ urban legend (NTE) */
+/* The official site's sticker pop: bright controls wear an ink outline and a hard offset shadow and sink into it
+   when pressed, headings are condensed capitals, the selected channel is a tilted sticker, the chat carries a
+   halftone screen and a slanted outlined street name sits behind it. */
+:root[data-theme="urban-legend"] #main { isolation: isolate; }
+:root[data-theme="urban-legend"] #main::after { content: 'URBAN LEGEND'; position: absolute; right: -24px; bottom: 96px; z-index: -1;
+  font: italic 700 112px/1 var(--theme-display); font-stretch: condensed; letter-spacing: .02em; white-space: nowrap;
+  color: transparent; -webkit-text-stroke: 1.5px color-mix(in srgb, var(--signal) 10%, transparent); transform: skewX(-10deg); pointer-events: none; }
+:root[data-theme="urban-legend"] .chat-scroll { background-image: radial-gradient(color-mix(in srgb, var(--signal) 9%, transparent) 1.1px, transparent 1.5px);
+  background-size: 14px 14px; background-attachment: local; }
+:root[data-theme="urban-legend"] :is(.btn.primary, .rail-item.active .rail-btn, .rail-btn:hover) {
+  border: 2px solid var(--theme-a5); box-shadow: 3px 3px 0 var(--theme-a5); }
+:root[data-theme="urban-legend"] .btn { font-family: var(--theme-display); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+:root[data-theme="urban-legend"] .btn.secondary { border: 2px solid var(--line); box-shadow: 3px 3px 0 var(--theme-a5); }
+:root[data-theme="urban-legend"] .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--theme-a5); }
+:root[data-theme="urban-legend"] :is(.card, .composer, .popover, .modal) { border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--theme-a5); }
+:root[data-theme="urban-legend"] :is(.chat-head .title > span, .group-nav-heading strong, .welcome h3, .card-title, .member-head) {
+  font-family: var(--theme-display); font-stretch: condensed; letter-spacing: .05em; text-transform: uppercase; }
+:root[data-theme="urban-legend"] :is(.card-title, .member-head)::before { width: 10px; height: 10px; border-radius: 2px;
+  background: var(--theme-a1); border: 1.5px solid var(--theme-a5); transform: rotate(45deg); }
+:root[data-theme="urban-legend"] :is(.group-nav-link.active, .dm.active) { background: var(--brand); color: var(--brand-ink); font-weight: 700;
+  border: 2px solid var(--theme-a5); border-radius: 8px; padding-left: 8px; box-shadow: 2px 2px 0 var(--theme-a5); transform: rotate(-1deg); }
+:root[data-theme="urban-legend"] .phase-tag { color: var(--theme-a5); background: var(--theme-a1); border: 1.5px solid var(--theme-a5); transform: rotate(-2deg); }
+:root[data-theme="urban-legend"] .app-tag { color: var(--theme-a5); background: var(--signal); }
+:root[data-theme="urban-legend"] .rail-pill { background: var(--brand); }
+:root[data-theme="urban-legend"] .composer:focus-within { border-color: var(--signal); }
+
+/* ------------------------------------------------------------ The Sky */
+/* Cream paper under a sky: the rail is a band from deep to light teal with round, cloud-white buttons, the channel
+   top fades like a cloud bank, headings are thin and airy, selection is dusk pink, and candle light glows on focus,
+   on the primary action and on live work. */
+:root[data-theme="the-sky"] #titlebar { background: var(--theme-a5); color: var(--theme-a4); }
+:root[data-theme="the-sky"] #titlebar :is(.tb-left, .tb-title, .tb-title svg, button) { color: var(--theme-a4); }
+:root[data-theme="the-sky"] #rail { background: linear-gradient(180deg, var(--theme-a5) 0%, var(--signal) 55%, var(--theme-a3) 100%); }
+:root[data-theme="the-sky"] .rail-btn { border-radius: 50%; color: var(--theme-a4);
+  background: color-mix(in srgb, var(--theme-a4) 16%, transparent); }
+:root[data-theme="the-sky"] :is(.rail-btn:hover, .rail-item.active .rail-btn) { border-radius: 50%; background: var(--theme-a4); color: var(--theme-a5);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--theme-a1) 70%, transparent); }
+:root[data-theme="the-sky"] .rail-pill { background: var(--theme-a1); }
+:root[data-theme="the-sky"] .rail-create { color: var(--theme-a4); }
+:root[data-theme="the-sky"] .chat-head { border-bottom-color: transparent;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--theme-a3) 38%, var(--bg-chat)) 0%, var(--bg-chat) 100%); }
+:root[data-theme="the-sky"] :is(.welcome h3, .chat-head .title > span, .group-nav-heading strong) { font-family: var(--theme-display); font-weight: 300; letter-spacing: .06em; }
+:root[data-theme="the-sky"] :is(.card-title, .member-head)::before { width: 7px; height: 7px; border-radius: 50%; background: var(--theme-a1);
+  box-shadow: 0 0 8px var(--theme-a1); }
+:root[data-theme="the-sky"] :is(.group-nav-link, .dm, .side-nav) { border-radius: 999px; }
+:root[data-theme="the-sky"] :is(.group-nav-link.active, .dm.active) { border-left: 0; padding-left: 12px; background: var(--bg-selected); }
+:root[data-theme="the-sky"] .btn.primary { box-shadow: 0 4px 18px color-mix(in srgb, var(--theme-a1) 55%, transparent); }
+:root[data-theme="the-sky"] .composer { border-radius: 24px; box-shadow: 0 6px 24px color-mix(in srgb, var(--theme-a5) 9%, transparent); }
+:root[data-theme="the-sky"] .composer:focus-within { border-color: var(--theme-a1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-a1) 30%, transparent),
+  0 6px 24px color-mix(in srgb, var(--theme-a1) 25%, transparent); }
+:root[data-theme="the-sky"] .typing b { color: var(--signal); text-shadow: 0 0 10px color-mix(in srgb, var(--theme-a1) 80%, transparent); }
+:root[data-theme="the-sky"] .chat-scroll { background-image: radial-gradient(circle, color-mix(in srgb, var(--theme-a1) 45%, transparent) 1px, transparent 1.6px),
+  radial-gradient(circle, color-mix(in srgb, var(--theme-a3) 55%, transparent) .8px, transparent 1.3px);
+  background-size: 92px 92px, 57px 57px; background-position: 0 0, 31px 19px; background-attachment: local; }
+
+/* ------------------------------------------------------------ Infinite (Arena Breakout: Infinite) */
+/* The official site's briefing screen: bracketed condensed capitals, rust markers and caution-yellow titles,
+   thin square outlines, a tick ruler down the member column like the site's section pager, faint scan lines. */
+:root[data-theme="infinite"] :is(.card-title, .member-head, .chat-head .title > span, .group-nav-heading strong, .btn, .ops-label) {
+  font-family: var(--theme-display); font-stretch: condensed; text-transform: uppercase; letter-spacing: .08em; }
+:root[data-theme="infinite"] :is(.card-title, .member-head)::before { content: '['; order: -2; width: auto; height: auto; background: none;
+  color: var(--signal); font-weight: 700; }
+:root[data-theme="infinite"] :is(.card-title, .member-head)::after { content: ']'; color: var(--signal); font-weight: 700; }
+:root[data-theme="infinite"] .card-title .act { order: 1; }
+:root[data-theme="infinite"] .welcome h3 { color: var(--theme-a1); font-family: var(--theme-display); font-stretch: condensed; letter-spacing: .04em; }
+:root[data-theme="infinite"] .btn.secondary { background: transparent; border: 1px solid var(--line); }
+:root[data-theme="infinite"] .btn.secondary:hover { border-color: var(--text-muted); background: var(--bg-hover); }
+:root[data-theme="infinite"] :is(.card, .composer, .popover) { border: 1px solid var(--line); }
+:root[data-theme="infinite"] :is(.group-nav-link.active, .dm.active) { border-left: 3px solid var(--signal); padding-left: 7px;
+  background: color-mix(in srgb, var(--signal) 12%, transparent); }
+:root[data-theme="infinite"] #panel { background-image: repeating-linear-gradient(180deg, var(--line) 0 1px, transparent 1px 14px);
+  background-size: 6px 100%; background-repeat: no-repeat; background-position: 0 0; }
+:root[data-theme="infinite"] .chat-scroll { background-image: repeating-linear-gradient(180deg, color-mix(in srgb, var(--text) 3%, transparent) 0 1px,
+  transparent 1px 4px); background-attachment: local; }
+:root[data-theme="infinite"] .phase-tag { color: var(--theme-a6); background: var(--theme-a1); }
+:root[data-theme="infinite"] .rail-pill { background: var(--signal); }
+:root[data-theme="infinite"] .typing b { color: var(--theme-a1); }
+
+/* ------------------------------------------------------------ Connecting (halyosy) */
+/* Six voices joined into one song: messages hang on one cable down the avatar column with each speaker as a node,
+   a six-color line runs under the channel header, section labels start with the six bars and the composer plugs
+   into the same line when focused. */
+:root[data-theme="connecting"] {
+  --theme-voices: linear-gradient(90deg, var(--theme-a1) 0 16.6%, var(--theme-a2) 0 33.3%, var(--theme-a3) 0 50%,
+    var(--theme-a4) 0 66.6%, var(--theme-a5) 0 83.3%, var(--theme-a6) 0);
+  --theme-voices-down: linear-gradient(180deg, var(--theme-a1) 0 16.6%, var(--theme-a2) 0 33.3%, var(--theme-a3) 0 50%,
+    var(--theme-a4) 0 66.6%, var(--theme-a5) 0 83.3%, var(--theme-a6) 0); }
+:root[data-theme="connecting"] .chat-head { position: relative; border-bottom-color: transparent; }
+:root[data-theme="connecting"] .chat-head::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--theme-voices); }
+:root[data-theme="connecting"] .messages { position: relative; }
+:root[data-theme="connecting"] .messages::before { content: ''; position: absolute; top: 0; bottom: 0; width: 2px;
+  left: calc(max(0px, (100% - var(--theme-message-width)) / 2) + 35px);
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--signal) 50%, transparent) 48px,
+    color-mix(in srgb, var(--signal) 50%, transparent) calc(100% - 48px), transparent); }
+:root[data-theme="connecting"] :is(.msg > .avatar, .sys > .sys-icon) { z-index: 1; }
+:root[data-theme="connecting"] .sys > .sys-icon { background: var(--bg-chat); border-radius: 50%; box-shadow: 0 0 0 3px var(--bg-chat); }
+:root[data-theme="connecting"] :is(.card-title, .member-head)::before { width: 18px; height: 4px; background: var(--theme-voices); }
+:root[data-theme="connecting"] .rail-pill { background: var(--theme-voices-down); }
+:root[data-theme="connecting"] .composer { border: 2px solid transparent;
+  background: linear-gradient(var(--bg-input), var(--bg-input)) padding-box, linear-gradient(var(--line), var(--line)) border-box; }
+:root[data-theme="connecting"] .composer:focus-within {
+  background: linear-gradient(var(--bg-input), var(--bg-input)) padding-box, var(--theme-voices) border-box; }
+:root[data-theme="connecting"] .group-nav-link.active { border-left: 3px solid; border-image: var(--theme-voices-down) 1; padding-left: 7px; }
+:root[data-theme="connecting"] .typing b { color: var(--signal); }
+
+/* ------------------------------------------------------------ Blessing (halyosy) */
+/* A birthday song for everyone: the channel header is a cream band sprinkled with confetti in the six voice colors
+   and edged with a cake frill, section labels start with a lit candle, panels are greeting cards with stitched
+   edges, the user's turns are peach bubbles and primary actions are round. */
+:root[data-theme="blessing"] {
+  --theme-confetti: radial-gradient(circle at 8% 32%, var(--theme-a1) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 23% 72%, var(--theme-a2) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 41% 26%, var(--theme-a4) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 58% 66%, var(--theme-a6) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 76% 30%, var(--theme-a5) 0 2.4px, transparent 3px),
+    radial-gradient(circle at 92% 70%, var(--theme-a3) 0 2.4px, transparent 3px); }
+:root[data-theme="blessing"] .chat-head { position: relative; z-index: 2; border-bottom-color: transparent;
+  background: var(--theme-confetti), var(--bg-rail); background-size: 220px 100%, auto; }
+:root[data-theme="blessing"] .chat-head::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 8px; pointer-events: none;
+  background: radial-gradient(circle at 8px 0, var(--bg-rail) 7.5px, transparent 8px) 0 0 / 16px 8px repeat-x; }
+:root[data-theme="blessing"] .welcome { background: var(--theme-confetti); background-size: 260px 120px; border-radius: var(--theme-radius); }
+:root[data-theme="blessing"] :is(.card-title, .member-head)::before { width: 5px; height: 13px; border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(180deg, var(--theme-a2) 0 32%, var(--theme-a4) 32%); box-shadow: 0 -2px 6px color-mix(in srgb, var(--theme-a2) 70%, transparent); }
+:root[data-theme="blessing"] .card { border: 1.5px dashed color-mix(in srgb, var(--signal) 32%, transparent); }
+:root[data-theme="blessing"] .msg[data-author="user"] .msg-body { display: inline-block; max-width: min(720px, 100%); padding: 9px 16px;
+  border-radius: 18px 18px 18px 6px; background: var(--bg-selected); color: var(--header); }
+:root[data-theme="blessing"] :is(.group-nav-link, .dm, .side-nav) { border-radius: 999px; }
+:root[data-theme="blessing"] :is(.group-nav-link.active, .dm.active) { border-left: 0; padding-left: 12px; background: var(--bg-selected); }
+:root[data-theme="blessing"] .rail-pill { background: var(--theme-confetti), var(--signal); }
+:root[data-theme="blessing"] .composer { border-radius: 22px; }
+:root[data-theme="blessing"] .composer:focus-within { border-color: var(--signal); box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-a4) 55%, transparent); }
+
+/* ------------------------------------------------------------ 2026 Halloween (light and dark) */
+/* CCA's own seasonal pair, not taken from a third-party work. The channel header ends in a jack-o'-lantern grin,
+   section labels start with a small pumpkin, a cobweb hangs in the top corner of the chat, the user's turns are
+   speech bubbles and headings use the handwriting face. The dark variant adds candle glow to the active channel. */
+:root[data-theme^="halloween"] {
+  --theme-pumpkin: radial-gradient(circle at 32% 58%, var(--theme-a5) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle at 68% 58%, var(--theme-a5) 0 1.2px, transparent 1.6px),
+    linear-gradient(var(--theme-a3), var(--theme-a3)) 50% 0 / 3px 3px no-repeat,
+    radial-gradient(ellipse at 50% 60%, var(--theme-a1) 0 98%, transparent 100%);
+  --theme-web-line: color-mix(in srgb, var(--text-muted) 42%, transparent);
+  --theme-web: repeating-conic-gradient(from 90deg at 100% 0, transparent 0 14deg, var(--theme-web-line) 14deg 15deg),
+    repeating-radial-gradient(circle at 100% 0, transparent 0 15px, var(--theme-web-line) 15px 16px); }
+:root[data-theme^="halloween"] .chat-head { position: relative; z-index: 2; }
+:root[data-theme^="halloween"] .chat-head::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 8px; pointer-events: none;
+  background: conic-gradient(from -45deg at 50% 100%, transparent 90deg, var(--bg-rail) 0) 0 0 / 16px 8px repeat-x; }
+:root[data-theme^="halloween"] .chat-scroll { background-image: var(--theme-web); background-size: 150px 150px;
+  background-position: 100% 0; background-repeat: no-repeat; background-attachment: scroll; }
+:root[data-theme^="halloween"] :is(.card-title, .member-head)::before { width: 13px; height: 11px; border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+  background: var(--theme-pumpkin); }
+:root[data-theme^="halloween"] :is(.chat-head .title > span, .group-nav-heading strong, .welcome h3, .card-title, .member-head) {
+  font-family: var(--theme-display); }
+:root[data-theme^="halloween"] .msg[data-author="user"] .msg-body { display: inline-block; max-width: min(720px, 100%); padding: 9px 16px;
+  border-radius: 18px 18px 6px 18px; background: var(--bg-selected); color: var(--header);
+  border: 1px solid color-mix(in srgb, var(--theme-a2) 38%, var(--line)); }
+:root[data-theme^="halloween"] :is(.group-nav-link, .dm, .side-nav) { border-radius: 999px; }
+:root[data-theme^="halloween"] :is(.group-nav-link.active, .dm.active) { border-left: 0; padding-left: 12px; background: var(--bg-selected);
+  box-shadow: inset 3px 0 0 var(--theme-a1); }
+:root[data-theme^="halloween"] .rail-pill { background: var(--theme-a1); }
+:root[data-theme^="halloween"] .card { border: 1px solid color-mix(in srgb, var(--theme-a2) 30%, var(--line)); }
+:root[data-theme^="halloween"] .composer { border-radius: 20px; }
+:root[data-theme^="halloween"] .composer:focus-within { border-color: var(--theme-a1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-a1) 32%, transparent); }
+:root[data-theme^="halloween"] .typing b { color: var(--theme-a1); }
+:root[data-theme="halloween-dark"] .rail-item.active .rail-btn { box-shadow: 0 0 0 1px var(--theme-a1), 0 0 18px color-mix(in srgb, var(--theme-a1) 50%, transparent); }
+:root[data-theme="halloween-dark"] :is(.card-title, .member-head)::before { filter: drop-shadow(0 0 4px color-mix(in srgb, var(--theme-a1) 70%, transparent)); }
+
+/* ------------------------------------------------------------ Hunt (追獵行動) */
+/* CCA's red-and-black theme. Native CCA cuts the top-left and bottom-right corners; this one cuts the opposite pair
+   (top-right, bottom-left), so panels read as blades. Cards carry a red top edge, section labels are crosshairs, the
+   channel header ends in slanted red hazard stripes, the chat has a faint diagonal grid and the title sits behind it. */
+:root[data-theme="hunt"] { --hc: 12px;
+  --hunt-cut: polygon(0 0, calc(100% - var(--hc)) 0, 100% var(--hc), 100% 100%, var(--hc) 100%, 0 calc(100% - var(--hc))); }
+:root[data-theme="hunt"] :is(.card, .embed, .modal, .gate-card, .acct-card, .banner, .toast, .stat-tile, .composer, .popover, #userbar,
+  .btn, .input, .select, .rv-file, .diff, .codeblock pre, .act-out pre) { border-radius: 0; clip-path: var(--hunt-cut); }
+:root[data-theme="hunt"] :is(.card, .embed, .modal, .gate-card, .acct-card) { border: 1px solid var(--line); border-top: 2px solid var(--signal); }
+:root[data-theme="hunt"] :is(.rail-btn, .rail-btn:hover, .rail-item.active .rail-btn) { --hc: 9px; border-radius: 0; clip-path: var(--hunt-cut); }
+:root[data-theme="hunt"] :is(.chip, .tag, .app-tag, .phase-tag, .guard-tag, .daily-tag, .plan-badge, .act-row .kind) {
+  --hc: 5px; border-radius: 0; clip-path: var(--hunt-cut); }
+:root[data-theme="hunt"] #main { isolation: isolate; }
+:root[data-theme="hunt"] #main::after { content: '追獵行動'; position: absolute; right: 18px; bottom: 100px; z-index: -1;
+  font: italic 700 96px/1 var(--theme-display); letter-spacing: .08em; white-space: nowrap; color: transparent;
+  -webkit-text-stroke: 1.5px color-mix(in srgb, var(--signal) 11%, transparent); transform: skewX(-10deg); pointer-events: none; }
+:root[data-theme="hunt"] .chat-scroll { background-image: repeating-linear-gradient(135deg, transparent 0 22px,
+  color-mix(in srgb, var(--signal) 5%, transparent) 22px 23px); background-attachment: local; }
+:root[data-theme="hunt"] .chat-head { position: relative; border-bottom-color: color-mix(in srgb, var(--signal) 45%, var(--line)); }
+:root[data-theme="hunt"] .chat-head::after { content: ''; position: absolute; left: 0; bottom: -1px; width: min(46%, 420px); height: 4px; pointer-events: none;
+  background: repeating-linear-gradient(115deg, var(--theme-a1) 0 9px, transparent 9px 16px);
+  mask-image: linear-gradient(90deg, #000 40%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 40%, transparent); }
+:root[data-theme="hunt"] :is(.chat-head .title > span, .group-nav-heading strong, .welcome h3, .card-title, .member-head, .btn) {
+  font-family: var(--theme-display); letter-spacing: .06em; }
+:root[data-theme="hunt"] :is(.card-title, .member-head)::before { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--signal);
+  background: linear-gradient(var(--signal), var(--signal)) 50% 50% / 1.5px 15px no-repeat, linear-gradient(var(--signal), var(--signal)) 50% 50% / 15px 1.5px no-repeat; }
+:root[data-theme="hunt"] .btn.primary { background: var(--brand); color: var(--brand-ink); }
+:root[data-theme="hunt"] .btn.primary:hover { background: var(--signal); }
+:root[data-theme="hunt"] .msg[data-author="user"] .msg-body { padding: 8px 16px 8px 14px; border-left: 3px solid var(--signal);
+  background: var(--bg-selected); clip-path: var(--hunt-cut); display: inline-block; max-width: min(720px, 100%); }
+:root[data-theme="hunt"] :is(.group-nav-link.active, .dm.active) { border-left: 3px solid var(--signal); padding-left: 7px;
+  background: linear-gradient(90deg, var(--signal-soft), transparent); }
+:root[data-theme="hunt"] .rail-pill { background: var(--signal); clip-path: polygon(0 0, 100% 14%, 100% 86%, 0 100%); }
+:root[data-theme="hunt"] .composer { border: 1px solid var(--line); border-bottom: 2px solid var(--line); }
+:root[data-theme="hunt"] .composer:focus-within { border-color: var(--signal); border-bottom-color: var(--signal); box-shadow: inset 0 0 0 1px var(--signal-soft); }
+:root[data-theme="hunt"] .phase-tag { color: var(--theme-a4); background: color-mix(in srgb, var(--theme-a4) 14%, transparent); }
+:root[data-theme="hunt"] .typing b { color: var(--signal); }
+
+
+/* ------------------------------------------------------------ gallery previews */
+/* Each preview shows the theme's own device, not only its colors (appearance.js sets data-preview). */
+.theme-mini { position: relative; }
+.theme-mini .theme-mini-rail { background: var(--m-rail); }
+.theme-mini-motif { position: absolute; pointer-events: none; }
+.theme-mini[data-preview^="codex"] .theme-mini-chat span { border-radius: 999px; }
+.theme-mini[data-preview^="codex"] .theme-mini-motif { right: 10px; top: 9px; font: 700 10px var(--mono); color: inherit; opacity: .55; }
+.theme-mini[data-preview^="codex"] .theme-mini-motif::before { content: '>_'; }
+.theme-mini[data-preview^="claude"] .theme-mini-motif { right: 10px; top: 8px; font-size: 16px; color: var(--m-a1); }
+.theme-mini[data-preview^="claude"] .theme-mini-motif::before { content: '✻'; }
+.theme-mini[data-preview^="gemini"] .theme-mini-motif { right: 12px; top: 10px; width: 14px; height: 14px;
+  background: linear-gradient(74deg, var(--m-a1), var(--m-a2), var(--m-a3));
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%); }
+.theme-mini[data-preview^="gemini"] .theme-mini-chat span { border-radius: 999px; }
+.theme-mini[data-preview="tokyo-night"] .theme-mini-motif { left: 58px; right: 0; top: 0; height: 3px; background: var(--m-signal); }
+.theme-mini[data-preview="urban-legend"] .theme-mini-chat span { border: 2px solid var(--m-a5); box-shadow: 2px 2px 0 var(--m-a5); }
+.theme-mini[data-preview="urban-legend"] .theme-mini-motif { right: -6px; bottom: 2px; font: italic 700 22px/1 var(--m-display);
+  color: transparent; -webkit-text-stroke: 1px var(--m-signal); opacity: .5; transform: skewX(-10deg); }
+.theme-mini[data-preview="urban-legend"] .theme-mini-motif::before { content: 'URBAN'; }
+.theme-mini[data-preview="the-sky"] .theme-mini-rail { background: linear-gradient(180deg, var(--m-a5), var(--m-signal) 55%, var(--m-a3)); }
+.theme-mini[data-preview="the-sky"] .theme-mini-motif { right: 12px; top: 12px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--m-a1); box-shadow: 0 0 9px var(--m-a1); }
+.theme-mini[data-preview="infinite"] .theme-mini-motif { right: 10px; top: 9px; font: 700 10px var(--mono); color: var(--m-signal); }
+.theme-mini[data-preview="infinite"] .theme-mini-motif::before { content: '[ ]'; }
+.theme-mini[data-preview="connecting"] .theme-mini-motif { left: 58px; right: 0; top: 0; height: 3px;
+  background: linear-gradient(90deg, var(--m-a1) 0 16.6%, var(--m-a2) 0 33.3%, var(--m-a3) 0 50%, var(--m-a4) 0 66.6%, var(--m-a5) 0 83.3%, var(--m-a6) 0); }
+.theme-mini[data-preview="blessing"] .theme-mini-motif { left: 58px; right: 0; top: 0; height: 22px;
+  background: radial-gradient(circle at 10% 40%, var(--m-a1) 0 2px, transparent 2.5px), radial-gradient(circle at 30% 70%, var(--m-a2) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 50% 35%, var(--m-a4) 0 2px, transparent 2.5px), radial-gradient(circle at 70% 70%, var(--m-a6) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 90% 40%, var(--m-a5) 0 2px, transparent 2.5px); }
+.theme-mini[data-preview^="halloween"] .theme-mini-chat span { border-radius: 10px 10px 3px 10px; }
+.theme-mini[data-preview^="halloween"] .theme-mini-motif { right: 10px; top: 9px; width: 14px; height: 12px; border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%;
+  background: radial-gradient(circle at 32% 58%, var(--m-a5) 0 1.2px, transparent 1.6px), radial-gradient(circle at 68% 58%, var(--m-a5) 0 1.2px, transparent 1.6px),
+    linear-gradient(var(--m-a3), var(--m-a3)) 50% 0 / 3px 3px no-repeat, radial-gradient(ellipse at 50% 60%, var(--m-a1) 0 98%, transparent 100%); }
+.theme-mini[data-preview="hunt"] .theme-mini-chat span { clip-path: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px)); border-radius: 0; }
+.theme-mini[data-preview="hunt"] .theme-mini-motif { left: 58px; right: 0; top: 0; height: 3px;
+  background: repeating-linear-gradient(115deg, var(--m-a1) 0 6px, transparent 6px 10px); }

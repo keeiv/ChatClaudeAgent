@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChatClaudeAgent</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="themes.css">
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+</head>
+<body>
+<div id="app">
+  <header id="titlebar"></header>
+  <div id="layout">
+    <nav id="rail" class="scroll-thin"></nav>
+    <aside id="sidebar"></aside>
+    <main id="main"></main>
+    <aside id="panel"></aside>
+    <div id="userbar"></div>
+  </div>
+</div>
+<div id="layers"></div>
+<script src="icons.js"></script>
+<script src="md.js"></script>
+<script>
+  // Outside the desktop app (plain browser preview), or with #mock while developing,
+  // a scripted backend stands in for the C++ host.
+  if (!(window.chrome && window.chrome.webview) || location.hash.includes('mock')) document.write('<script src="mock.js"><\/script>');
+</script>
+<script src="workflow.js"></script>
+<script src="profile_media.js"></script>
+<script src="platform.js"></script>
+<script src="collaboration.js"></script>
+<script src="quality.js"></script>
+<script src="activity.js"></script>
+<script src="badge_icons.js"></script>
+<script src="badges.js"></script>
+<script src="desk.js"></script>
+<script src="git.js"></script>
+<script src="theme_catalog.js"></script>
+<script src="appearance.js"></script>
+<script src="extensions.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
