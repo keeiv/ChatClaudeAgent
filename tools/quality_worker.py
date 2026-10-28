@@ -48,7 +48,8 @@ def relative(root, value):
             break
         if entry.is_symlink() or (entry.exists() and getattr(entry.stat(follow_symlinks=False), 'st_file_attributes', 0) & 0x400):
             raise ValueError('驗證工具不跟隨連結')
-    if not path.resolve().is_relative_to(root):
+    # Resolve both sides: a root given by its 8.3 short name (C:\Users\RUNNER~1\...) never matches the long names resolve() returns.
+    if not path.resolve().is_relative_to(root.resolve()):
         raise ValueError('路徑超出專案')
     return path
 

@@ -1,4 +1,5 @@
 """Real local commands, Git archives and browser workflows without model calls or user data."""
+import hashlib
 import importlib.util
 import json
 import os
@@ -33,6 +34,22 @@ class QualityTests(unittest.TestCase):
         before = q.fingerprint(self.root)
         (self.root / 'value.py').write_text('VALUE = 2\n', encoding='utf-8')
         self.assertNotEqual(before, q.fingerprint(self.root))
+
+    @unittest.skipUnless(os.name == 'nt', 'short file names are a Windows feature')
+    def test_project_given_by_its_short_name_is_still_inside_the_project(self):
+        # CI runners hand out temp folders such as C:\Users\RUNNER~1\...; the same folder must work by either name.
+        import ctypes
+        long_root = self.root / 'a-project-folder-with-a-long-name'
+        long_root.mkdir()
+        (long_root / 'value.py').write_text('VALUE = 1\n', encoding='utf-8')
+        buffer = ctypes.create_unicode_buffer(1024)
+        if not ctypes.windll.kernel32.GetShortPathNameW(str(long_root), buffer, 1024) or Path(buffer.value) == long_root:
+            self.skipTest('this volume does not create 8.3 names')
+        short_root = Path(buffer.value)
+        before = q.fingerprint(short_root)
+        self.assertNotEqual(before, hashlib.sha256().hexdigest(), 'every file was rejected, leaving the empty hash')
+        (long_root / 'value.py').write_text('VALUE = 2\n', encoding='utf-8')
+        self.assertNotEqual(before, q.fingerprint(short_root))
 
     def test_dependencies_and_secrets_are_excluded(self):
         before = q.fingerprint(self.root)
