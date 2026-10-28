@@ -52,9 +52,16 @@ const { chromium } = require('playwright');
     await page.screenshot({ path: path.join(out, 'activity-desktop.png'), fullPage: true });
     await page.setViewportSize({ width: 960, height: 850 });
     // The resize reaches the page asynchronously; wait for the layout instead of measuring a stale one on a busy machine.
-    await page.waitForFunction(() => innerWidth === 960 && (() => { const el = document.querySelector('.activity-scroll'); return el && el.scrollWidth > el.clientWidth; })(), null, { timeout: 5000 }).catch(() => {});
-    const narrow = await page.locator('.activity-scroll').evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth, viewport: innerWidth }));
-    check(narrow.scroll > narrow.client, `narrow layout scrolls only the calendar (scrollWidth ${narrow.scroll}, clientWidth ${narrow.client}, viewport ${narrow.viewport})`);
+    // Crossing 1200px redraws the whole page, so wait until the calendar is back and has a size before measuring it.
+    await page.waitForFunction(() => innerWidth === 960 && (() => { const el = document.querySelector('.activity-scroll'); return el && el.clientWidth > 0; })(), null, { timeout: 10000 }).catch(() => {});
+    const narrow = await page.evaluate(() => {
+      const scroll = document.querySelector('.activity-scroll');
+      const card = document.querySelector('.activity-card');
+      return { scroll: scroll ? scroll.scrollWidth : -1, client: scroll ? scroll.clientWidth : -1, viewport: innerWidth,
+        cards: document.querySelectorAll('.activity-card').length, cells: document.querySelectorAll('.activity-grid button').length,
+        display: card ? getComputedStyle(card).display : 'none', hash: location.hash, view: document.body.className };
+    });
+    check(narrow.scroll > narrow.client, `narrow layout scrolls only the calendar (${JSON.stringify(narrow)})`);
     check(await page.locator('.activity-card').evaluate(el => el.getBoundingClientRect().right <= innerWidth), 'card does not overflow narrow viewport');
     await cells.last().focus();
     await page.screenshot({ path: path.join(out, 'activity-narrow.png') });
