@@ -1,0 +1,539 @@
+[
+  {
+    "id": "cca",
+    "name": "CCA 原生",
+    "kicker": "協作工作終端",
+    "scheme": "dark",
+    "shape": "cut",
+    "palette": {},
+    "motif": "石墨灰、冰藍訊號、切角板、24px 點陣與指揮官斜紋警示帶。",
+    "description": "保留石墨灰、冰藍訊號與原有切角。",
+    "sources": []
+  },
+  {
+    "id": "codex",
+    "name": "OpenAI Codex · 亮色",
+    "kicker": "單色工作區與終端提示符",
+    "scheme": "light",
+    "shape": "soft",
+    "palette": {
+      "rail": "#f9f9f9",
+      "side": "#f9f9f9",
+      "chat": "#ffffff",
+      "panel": "#f9f9f9",
+      "input": "#ffffff",
+      "hover": "#ececec",
+      "selected": "#e3e3e3",
+      "line": "#e3e3e3",
+      "text": "#0d0d0d",
+      "muted": "#5d5d5d",
+      "signal": "#1f5fbf",
+      "brand": "#0d0d0d",
+      "accents": [
+        "#0d0d0d",
+        "#f4f4f4",
+        "#1f8a5b",
+        "#c4342f",
+        "#5d5d5d",
+        "#ffffff"
+      ],
+      "font": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft JhengHei UI\", \"Microsoft JhengHei\", sans-serif"
+    },
+    "motif": "使用者訊息是淡灰泡泡、回覆滿版；輸入框浮起成膠囊；區段標題帶 CLI 的 >_ 提示符；不加點陣與裝飾線。",
+    "description": "白底、淺灰側欄、黑色主要動作，對話與審查都只用灰階分層。",
+    "sources": [
+      "https://learn.chatgpt.com/docs/app"
+    ]
+  },
+  {
+    "id": "codex-dark",
+    "name": "OpenAI Codex · 暗色",
+    "kicker": "單色工作區與終端提示符",
+    "scheme": "dark",
+    "shape": "soft",
+    "palette": {
+      "rail": "#171717",
+      "side": "#171717",
+      "chat": "#212121",
+      "panel": "#1b1b1b",
+      "input": "#303030",
+      "hover": "#2f2f2f",
+      "selected": "#383838",
+      "line": "#3a3a3a",
+      "text": "#ececec",
+      "muted": "#b4b4b4",
+      "signal": "#8ab4f8",
+      "brand": "#f9f9f9",
+      "accents": [
+        "#f9f9f9",
+        "#303030",
+        "#4fc28f",
+        "#ff8583",
+        "#b4b4b4",
+        "#0d0d0d"
+      ],
+      "font": "\"Segoe UI Variable Text\", \"Segoe UI\", \"Microsoft JhengHei UI\", \"Microsoft JhengHei\", sans-serif"
+    },
+    "motif": "使用者訊息是深灰泡泡、回覆滿版；輸入框浮起成膠囊；區段標題帶 CLI 的 >_ 提示符；不加點陣與裝飾線。",
+    "description": "炭灰閱讀面、黑色側欄與白色主要動作，對話與審查都只用灰階分層。",
+    "sources": [
+      "https://learn.chatgpt.com/docs/app"
+    ]
+  },
+  {
+    "id": "claude",
+    "name": "Anthropic Claude · 亮色",
+    "kicker": "象牙紙面與襯線閱讀",
+    "scheme": "light",
+    "shape": "paper",
+    "palette": {
+      "rail": "#f0eee6",
+      "side": "#f5f4ed",
+      "chat": "#faf9f5",
+      "panel": "#f5f4ed",
+      "input": "#ffffff",
+      "hover": "#ece9df",
+      "selected": "#e6e1d4",
+      "line": "#e3dfd3",
+      "text": "#141413",
+      "muted": "#5e5d59",
+      "signal": "#a34b30",
+      "brand": "#b8532f",
+      "accents": [
+        "#c96442",
+        "#f0eee6",
+        "#6a9bcc",
+        "#788c5d",
+        "#b86046",
+        "#141413"
+      ],
+      "reading": "Georgia, Cambria, \"Times New Roman\", \"Microsoft JhengHei UI\", \"Microsoft JhengHei\", serif"
+    },
+    "motif": "AI 回覆改用襯線字並放寬行距；使用者訊息放在燕麥色紙片上；Claude 的名字前與區段標題用陶土色星芒 ✻；輸入框是浮起的紙張。",
+    "description": "象牙白紙面、陶土色動作，回覆以襯線字排版，像在讀一篇編輯過的文章。",
+    "sources": [
+      "https://www.anthropic.com/",
+      "https://claude.com/product/overview"
+    ]
+  },
+  {
+    "id": "claude-dark",
+    "name": "Anthropic Claude · 暗色",
+    "kicker": "象牙紙面與襯線閱讀",
+    "scheme": "dark",
+    "shape": "paper",
+    "palette": {
+      "rail": "#1a1918",
+      "side": "#1f1e1d",
+      "chat": "#262624",
+      "panel": "#2b2a27",
+      "input": "#30302e",
+      "hover": "#353430",
+      "selected": "#403e39",
+      "line": "#4a4842",
+      "text": "#f5f4ee",
+      "muted": "#bfbcb1",
+      "signal": "#e38b6a",
+      "brand": "#d97757",
+      "accents": [
+        "#d97757",
+        "#3a3833",
+        "#8fb4dc",
+        "#a3b58a",
+        "#d08a6e",
+        "#f5f4ee"
+      ],
+      "reading": "Georgia, Cambria, \"Times New Roman\", \"Microsoft JhengHei UI\", \"Microsoft JhengHei\", serif"
+    },
+    "motif": "AI 回覆改用襯線字並放寬行距；使用者訊息放在深燕麥色紙片上；Claude 的名字前與區段標題用陶土色星芒 ✻；輸入框是浮起的紙張。",
+    "description": "暖炭紙面、象牙文字與陶土色動作，回覆以襯線字排版。",
+    "sources": [
+      "https://www.anthropic.com/",
+      "https://claude.com/product/overview"
+    ]
+  },
+  {
+    "id": "gemini",
+    "name": "Google Gemini · 亮色",
+    "kicker": "四角星芒與 Material 曲面",
+    "scheme": "light",
+    "shape": "round",
+    "palette": {
+      "rail": "#f0f4f9",
+      "side": "#f0f4f9",
+      "chat": "#ffffff",
+      "panel": "#f8fafd",
+      "input": "#f0f4f9",
+      "hover": "#e1e5ea",
+      "selected": "#d3e3fd",
+      "line": "#dde3ea",
+      "text": "#1f1f1f",
+      "muted": "#444746",
+      "signal": "#0b57d0",
+      "brand": "#0b57d0",
+      "accents": [
+        "#4285f4",
+        "#9b72cb",
+        "#d96570",
+        "#041e49",
+        "#d3e3fd",
+        "#ffffff"
+      ]
+    },
+    "motif": "藍、紫、玫瑰的星芒漸層只出現在輸入框聚焦、正在工作的提示與四角星形區段標記；選取項目是膠囊，輸入框圓角 28px。",
+    "description": "白底與淡藍容器、膠囊選取與大圓角輸入框，星芒漸層只標示焦點與進行中的工作。",
+    "sources": [
+      "https://gemini.google.com/",
+      "https://blog.google/innovation-and-ai/products/gemini-app/gemini-app-now-on-windows/"
+    ]
+  },
+  {
+    "id": "gemini-dark",
+    "name": "Google Gemini · 暗色",
+    "kicker": "四角星芒與 Material 曲面",
+    "scheme": "dark",
+    "shape": "round",
+    "palette": {
+      "rail": "#1e1f20",
+      "side": "#1e1f20",
+      "chat": "#131314",
+      "panel": "#1e1f20",
+      "input": "#1e1f20",
+      "hover": "#2b2d30",
+      "selected": "#004a77",
+      "line": "#3c4043",
+      "text": "#e3e3e3",
+      "muted": "#c4c7c5",
+      "signal": "#a8c7fa",
+      "brand": "#a8c7fa",
+      "accents": [
+        "#4796e3",
+        "#9177c7",
+        "#ca6673",
+        "#c2e7ff",
+        "#004a77",
+        "#131314"
+      ]
+    },
+    "motif": "藍、紫、玫瑰的星芒漸層只出現在輸入框聚焦、正在工作的提示與四角星形區段標記；選取項目是深藍膠囊，輸入框圓角 28px。",
+    "description": "近黑閱讀面、浮起的灰色容器與深藍膠囊選取，星芒漸層只標示焦點與進行中的工作。",
+    "sources": [
+      "https://gemini.google.com/",
+      "https://blog.google/innovation-and-ai/products/gemini-app/gemini-app-now-on-windows/"
+    ]
+  },
+  {
+    "id": "tokyo-night",
+    "name": "Tokyo Night",
+    "kicker": "夜晚的編輯器",
+    "scheme": "dark",
+    "shape": "editor",
+    "palette": {
+      "rail": "#16161e",
+      "side": "#16161e",
+      "chat": "#1a1b26",
+      "panel": "#16161e",
+      "input": "#1f2335",
+      "hover": "#1f2335",
+      "selected": "#283457",
+      "line": "#292e42",
+      "text": "#c0caf5",
+      "muted": "#a9b1d6",
+      "signal": "#7aa2f7",
+      "brand": "#7aa2f7",
+      "accents": [
+        "#bb9af7",
+        "#7dcfff",
+        "#9ece6a",
+        "#e0af68",
+        "#f7768e",
+        "#ff9e64"
+      ],
+      "display": "\"Cascadia Mono\", Consolas, \"Microsoft JhengHei UI\", monospace"
+    },
+    "motif": "頻道標題做成編輯器分頁、頂端藍線；區段標題像註解 //；標籤套用原作的語法色；輸入提示列變成狀態列；伺服器列的選取項目有霓虹光暈。",
+    "description": "原作的靛藍夜色與語法配色，介面像一個開著分頁與狀態列的編輯器。",
+    "sources": [
+      "https://github.com/tokyo-night/tokyo-night-vscode-theme"
+    ]
+  },
+  {
+    "id": "urban-legend",
+    "name": "urban legend",
+    "kicker": "異環 NTE · 都市貼紙",
+    "scheme": "dark",
+    "shape": "sticker",
+    "palette": {
+      "rail": "#14141f",
+      "side": "#1b1b2a",
+      "chat": "#20202f",
+      "panel": "#181826",
+      "input": "#2a2a3c",
+      "hover": "#2c2c40",
+      "selected": "#36365a",
+      "line": "#45456a",
+      "text": "#f4f1ff",
+      "muted": "#bdb8d6",
+      "signal": "#4fe5fb",
+      "brand": "#fde390",
+      "accents": [
+        "#f1558e",
+        "#fde390",
+        "#4fe5fb",
+        "#57e5d5",
+        "#0b0b12",
+        "#7cecfc"
+      ],
+      "display": "Bahnschrift, \"Segoe UI\", \"Microsoft JhengHei UI\", sans-serif"
+    },
+    "motif": "官網的貼紙風：亮色按鈕有墨色粗框與硬陰影、按下會往陰影方向沉；標題用 Bahnschrift 窄體大寫；選取項目像斜貼的貼紙；聊天區有網點，背後是一行斜體空心街名。",
+    "description": "夜色靛灰底、奶油黃動作、青藍訊號與桃紅提醒，粗框硬陰影的城市貼紙。",
+    "sources": [
+      "https://nte.perfectworld.com/en/",
+      "https://store.steampowered.com/app/4508340/"
+    ]
+  },
+  {
+    "id": "the-sky",
+    "name": "The Sky",
+    "kicker": "Sky 光遇 · 雲上的燭光",
+    "scheme": "light",
+    "shape": "sky",
+    "palette": {
+      "rail": "#ece5d4",
+      "side": "#f6f2e8",
+      "chat": "#fffcf4",
+      "panel": "#faf6ec",
+      "input": "#ffffff",
+      "hover": "#f1ebdd",
+      "selected": "#fce9e5",
+      "line": "#e6dfcf",
+      "text": "#163f52",
+      "muted": "#4a6876",
+      "signal": "#2e7090",
+      "brand": "#2e7090",
+      "accents": [
+        "#f2b45c",
+        "#fce9e5",
+        "#9fc7da",
+        "#ffffff",
+        "#163f52",
+        "#e6a07a"
+      ],
+      "display": "\"Segoe UI\", \"Microsoft JhengHei UI\", \"Microsoft JhengHei\", sans-serif"
+    },
+    "motif": "伺服器列是一道由深到淺的天空；頻道頂端有雲層漸層；圓形按鈕、細體標題；選取用晚霞粉；聚焦、主要動作與工作中提示帶燭光暈；聊天區有稀疏的星點。",
+    "description": "奶油紙色、深青天空與晚霞粉，燭光只亮在需要注意的地方。",
+    "sources": [
+      "https://www.thatskygame.com/",
+      "https://store.steampowered.com/app/2325290/"
+    ]
+  },
+  {
+    "id": "infinite",
+    "name": "Infinite",
+    "kicker": "暗區突圍：無限 · 戰前簡報",
+    "scheme": "dark",
+    "shape": "tactical",
+    "palette": {
+      "rail": "#08090b",
+      "side": "#0e1013",
+      "chat": "#121418",
+      "panel": "#0e1013",
+      "input": "#1a1d22",
+      "hover": "#1c2026",
+      "selected": "#2a1c17",
+      "line": "#2e3238",
+      "text": "#d6d6d6",
+      "muted": "#a3a3a3",
+      "signal": "#e0603f",
+      "brand": "#ca4d31",
+      "ink": "#ffffff",
+      "accents": [
+        "#e3cf3d",
+        "#ca4d31",
+        "#5b6b4e",
+        "#ff3b30",
+        "#9b9b9b",
+        "#08090b"
+      ],
+      "display": "Bahnschrift, \"Segoe UI\", \"Microsoft JhengHei UI\", sans-serif"
+    },
+    "motif": "官網的簡報畫面：區段標題用方括號 [ ]、窄體大寫；鐵鏽橙標記與警示黃標題；細框方形按鈕；側欄左緣是官網分頁器那樣的刻度尺；聊天區帶很淡的掃描線。",
+    "description": "近黑底、鐵鏽橙與警示黃，方括號標籤與刻度尺。",
+    "sources": [
+      "https://www.arenabreakoutinfinite.com/en/",
+      "https://store.steampowered.com/app/2073620/"
+    ]
+  },
+  {
+    "id": "connecting",
+    "name": "Connecting",
+    "kicker": "halyosy · 六聲連線",
+    "scheme": "dark",
+    "shape": "signal",
+    "palette": {
+      "rail": "#0a0e1c",
+      "side": "#0f1426",
+      "chat": "#121933",
+      "panel": "#0e1325",
+      "input": "#1a2240",
+      "hover": "#1d2648",
+      "selected": "#24305a",
+      "line": "#2f3b6b",
+      "text": "#e8edfb",
+      "muted": "#aab4d8",
+      "signal": "#33ccbb",
+      "brand": "#33ccbb",
+      "accents": [
+        "#33ccbb",
+        "#ffcc11",
+        "#ffee11",
+        "#ffbbcc",
+        "#dd4444",
+        "#3366cc"
+      ]
+    },
+    "motif": "訊息沿著頭像欄的一條纜線排列，每位發言者是線上的節點；頻道標題下是六色訊號線；區段標題前是六色短條；輸入框聚焦時接上六色線；伺服器列選取標記也是六色。",
+    "description": "深夜藍底與六種歌聲的顏色，把每一次交接畫成接在同一條線上的訊號。",
+    "sources": [
+      "https://vocadb.net/S/68841",
+      "https://dic.nicovideo.jp/a/connecting"
+    ]
+  },
+  {
+    "id": "blessing",
+    "name": "Blessing",
+    "kicker": "halyosy · 給每個人的生日歌",
+    "scheme": "light",
+    "shape": "ribbon",
+    "palette": {
+      "rail": "#fbe3cf",
+      "side": "#fff3e6",
+      "chat": "#fffaf3",
+      "panel": "#fff1e3",
+      "input": "#ffffff",
+      "hover": "#fbe9d8",
+      "selected": "#ffdccb",
+      "line": "#f0d6bf",
+      "text": "#4a3530",
+      "muted": "#6e544c",
+      "signal": "#b8355c",
+      "brand": "#b4432c",
+      "accents": [
+        "#33ccbb",
+        "#ffcc11",
+        "#ffee11",
+        "#ffbbcc",
+        "#dd4444",
+        "#3366cc"
+      ]
+    },
+    "motif": "頻道標題是撒了六色彩紙的奶油帶，下緣是蛋糕花邊；區段標題前是一根點亮的蠟燭；面板像賀卡，有虛線車縫；使用者訊息是蜜桃色泡泡；主要動作是圓角膠囊。",
+    "description": "奶油與蜜桃色，彩紙、蠟燭和賀卡車縫線，把完成的工作當成一份祝福。",
+    "sources": [
+      "https://vocadb.net/S/50703",
+      "https://www.nicovideo.jp/watch/sm23304692"
+    ]
+  },
+  {
+    "id": "halloween",
+    "name": "2026 萬聖節 · 亮色",
+    "kicker": "南瓜燈與蜘蛛網 · 日間",
+    "scheme": "light",
+    "shape": "pumpkin",
+    "palette": {
+      "rail": "#f3d3a6",
+      "side": "#fbe9cf",
+      "chat": "#fff6e6",
+      "panel": "#fdeed8",
+      "input": "#ffffff",
+      "hover": "#f8e0bd",
+      "selected": "#f6cf9f",
+      "line": "#e3c08f",
+      "text": "#2b1838",
+      "muted": "#5d4568",
+      "signal": "#b5420a",
+      "brand": "#c2490a",
+      "accents": [
+        "#f08a1c",
+        "#6b2fa0",
+        "#5c9a2a",
+        "#f5c542",
+        "#1d1026",
+        "#b3202f"
+      ],
+      "display": "\"Ink Free\", \"Segoe Script\", \"Microsoft JhengHei UI\", cursive"
+    },
+    "motif": "頻道標題下緣是南瓜燈的鋸齒笑口；區段標題前是一顆小南瓜；右上角掛一角蜘蛛網；使用者訊息是淡紫橙色的對話泡泡；英文標題用手寫體。",
+    "description": "奶油紙色配南瓜橙與夜紫，2026 年萬聖節的日間版本。",
+    "sources": []
+  },
+  {
+    "id": "halloween-dark",
+    "name": "2026 萬聖節 · 暗色",
+    "kicker": "南瓜燈與蜘蛛網 · 午夜",
+    "scheme": "dark",
+    "shape": "pumpkin",
+    "palette": {
+      "rail": "#0b0610",
+      "side": "#120a1a",
+      "chat": "#170d20",
+      "panel": "#1d1128",
+      "input": "#241532",
+      "hover": "#2a1a3a",
+      "selected": "#3a2250",
+      "line": "#4a2f63",
+      "text": "#f3e9ff",
+      "muted": "#b9a3cf",
+      "signal": "#ff8a1f",
+      "brand": "#ff7a14",
+      "accents": [
+        "#ff8a1f",
+        "#9d5cff",
+        "#8be04e",
+        "#ffd24a",
+        "#f3e9ff",
+        "#e5384b"
+      ],
+      "display": "\"Ink Free\", \"Segoe Script\", \"Microsoft JhengHei UI\", cursive"
+    },
+    "motif": "頻道標題下緣是南瓜燈的鋸齒笑口；區段標題前是一顆亮著的小南瓜；右上角掛一角蜘蛛網；目前頻道的圖標透出燭火橙光；英文標題用手寫體。",
+    "description": "暗紫夜色配南瓜橙與史萊姆綠，2026 年萬聖節的午夜版本。",
+    "sources": []
+  },
+  {
+    "id": "hunt",
+    "name": "追獵行動",
+    "kicker": "紅與黑 · 鎖定目標",
+    "scheme": "dark",
+    "shape": "slash",
+    "palette": {
+      "rail": "#050405",
+      "side": "#0a0809",
+      "chat": "#0f0b0c",
+      "panel": "#0b0809",
+      "input": "#181112",
+      "hover": "#1f1517",
+      "selected": "#2f1115",
+      "line": "#3a2327",
+      "text": "#ece4e4",
+      "muted": "#ad9d9f",
+      "signal": "#ff2a3d",
+      "brand": "#d11a2a",
+      "ink": "#ffffff",
+      "accents": [
+        "#ff2a3d",
+        "#d11a2a",
+        "#7a0f1a",
+        "#ffb000",
+        "#8a8a8a",
+        "#050405"
+      ],
+      "display": "Bahnschrift, \"Segoe UI\", \"Microsoft JhengHei UI\", sans-serif"
+    },
+    "motif": "切角開在右上與左下，和原生的左上右下相反；卡片頂緣是紅線；區段標題前是準星；頻道標題下緣是紅色斜紋；背景是淡淡的斜線網格，右下角有「追獵行動」描邊字。",
+    "description": "近黑底配警戒紅，反向切角、準星與斜紋，像鎖定目標的作戰介面。",
+    "sources": []
+  }
+]
