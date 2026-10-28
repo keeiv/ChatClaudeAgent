@@ -1,0 +1,22 @@
+// Product identity for the isolated updater replacement fixture.
+#include <windows.h>
+1 VERSIONINFO
+FILEVERSION 1,0,0,1
+PRODUCTVERSION 1,0,0,1
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040404b0"
+    BEGIN
+      VALUE "ProductName", "ChatClaudeAgent"
+      VALUE "ProductVersion", "1.0.0-oss"
+      VALUE "OriginalFilename", "ChatClaudeAgent.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x0404, 1200
+  END
+END

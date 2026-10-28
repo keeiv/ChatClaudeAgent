@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- Replays a pty_run recording in xterm.js: pty_view.html?file=out.vt&cols=100&rows=32&upto=12345 -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css"
+      integrity="sha384-8Xk9wy/gzEDUKrXtrmCFa2bBuK3BpjpDuL/p0SeKQX19Khl/M+lHOgD/CyYf7efP" crossorigin="anonymous">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.js"
+        integrity="sha384-M169f14mRZOXm3hD/v2Ti0ThIT/RnAQagXA9nlE15yHAtrW19gdePJh/HaTzUOe/" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.8.0/lib/addon-unicode11.js"
+        integrity="sha384-7DkEj65mwuJpyTemyRshYB1TDCUcpXHiCcSt0agkXn8Zz8nOqajgB6EoeULHiS1O" crossorigin="anonymous"></script>
+<style>
+  body { margin: 0; background: #0c0c0c; }
+  #t { padding: 8px; }
+</style>
+</head>
+<body>
+<div id="t"></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const term = new Terminal({
+    cols: +(q.get('cols') || 100), rows: +(q.get('rows') || 32), scrollback: 5000, allowProposedApi: true,
+    fontFamily: '"Cascadia Mono", Consolas, "Microsoft JhengHei", monospace', fontSize: 15,
+    theme: { background: '#0c0c0c', foreground: '#cccccc' },
+  });
+  term.loadAddon(new Unicode11Addon.Unicode11Addon());
+  term.unicode.activeVersion = '11';
+  term.open(document.getElementById('t'));
+  fetch(q.get('file')).then((r) => r.arrayBuffer()).then((buf) => {
+    let bytes = new Uint8Array(buf);
+    if (q.get('upto')) bytes = bytes.slice(0, +q.get('upto'));
+    term.write(bytes, () => { document.title = 'ready'; });
+  });
+</script>
+</body>
+</html>
