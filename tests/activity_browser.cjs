@@ -53,7 +53,8 @@ const { chromium } = require('playwright');
     await page.setViewportSize({ width: 960, height: 850 });
     // The resize reaches the page asynchronously; wait for the layout instead of measuring a stale one on a busy machine.
     await page.waitForFunction(() => innerWidth === 960 && (() => { const el = document.querySelector('.activity-scroll'); return el && el.scrollWidth > el.clientWidth; })(), null, { timeout: 5000 }).catch(() => {});
-    check(await page.locator('.activity-scroll').evaluate(el => el.scrollWidth > el.clientWidth), 'narrow layout scrolls only the calendar');
+    const narrow = await page.locator('.activity-scroll').evaluate(el => ({ scroll: el.scrollWidth, client: el.clientWidth, viewport: innerWidth }));
+    check(narrow.scroll > narrow.client, `narrow layout scrolls only the calendar (scrollWidth ${narrow.scroll}, clientWidth ${narrow.client}, viewport ${narrow.viewport})`);
     check(await page.locator('.activity-card').evaluate(el => el.getBoundingClientRect().right <= innerWidth), 'card does not overflow narrow viewport');
     await cells.last().focus();
     await page.screenshot({ path: path.join(out, 'activity-narrow.png') });

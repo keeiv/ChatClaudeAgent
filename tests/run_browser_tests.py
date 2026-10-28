@@ -49,15 +49,23 @@ def main():
         else:
             print("UI 伺服器沒有啟動")
             return 1
-        for test in tests:
-            started = time.time()
+        def attempt(test):
             try:
                 result = subprocess.run(["node", os.path.join("tests", test)], cwd=ROOT, env=env, capture_output=True,
                                         timeout=300)
-                code = result.returncode
-                output = (result.stdout + result.stderr).decode("utf-8", errors="replace")
+                return result.returncode, (result.stdout + result.stderr).decode("utf-8", errors="replace")
             except subprocess.TimeoutExpired:
-                code, output = -1, "逾時（300 秒）"
+                return -1, "逾時（300 秒）"
+
+        for test in tests:
+            started = time.time()
+            code, output = attempt(test)
+            if code != 0 and "TimeoutError" in output and "AssertionError" not in output:
+                # A browser that is slow to start (cold Edge on a busy CI machine) is not a product failure. Only a
+                # navigation or wait timeout is retried, once; a failed assertion is never retried, and the retry is
+                # printed so a test that needs it is still visible.
+                print(f"RETRY {test}: 瀏覽器等待逾時，重試一次", flush=True)
+                code, output = attempt(test)
             if code == 0:
                 last = [l for l in output.strip().split("\n") if l.strip()][-1:] or [""]
                 print(f"PASS {test} ({time.time() - started:.0f}s): {last[0].strip()[:100]}", flush=True)

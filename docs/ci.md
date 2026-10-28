@@ -16,6 +16,11 @@
 
 `CI 全部通過` 在其他工作之後執行，任何一項不是 success（含被略過）就失敗。把它設為分支保護的必要狀態檢查，就只需要維護這一個名稱。
 
+GitHub 的執行環境有兩個限制，測試對它們的處理方式要看得見：
+
+- **更新程式替換測試**（`tests/test_update_broker.py`）：CCA 刻意拒絕在不允許脫離的宿主 Job 物件裡更新（更新程式必須比 CCA 活得久），而 GitHub 的每個步驟都在這樣的 Job 裡。測試用 `host_job_allows_breakaway()` 偵測到這種環境就**跳過**並說明原因，所以真實的替換與復原只在本機（`python tests\test_update_broker.py`，要從 PowerShell 或 cmd 跑，不是 Git Bash）驗證，CI 沒有涵蓋。
+- **瀏覽器冷啟動逾時**：`tests/run_browser_tests.py` 對「頁面載入或等待逾時」且沒有任何斷言失敗的測試重試一次，並印出 `RETRY`。斷言失敗不重試。
+
 這些檢查**沒有**涵蓋：真實模型與訂閱額度（`build.bat live`）、真的 Docker 容器隔離（需要映像檔與 Docker，由 `tests\test_sandbox_mcp.py` 在有 Docker 時多跑一次）、Android 實機（Haiku 的 APK 與手機版編輯頁在私有的 Haiku 流程測）、使用者目前正在使用的 CCA 的實際更新。
 
 ## 記憶體測試

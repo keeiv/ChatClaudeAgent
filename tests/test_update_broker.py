@@ -15,6 +15,39 @@ import unittest
 ROOT = Path(__file__).resolve().parent.parent
 
 
+class _BasicLimits(ctypes.Structure):
+    _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
+                ("LimitFlags", ctypes.c_uint32), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", ctypes.c_uint32),
+                ("Affinity", ctypes.c_size_t), ("PriorityClass", ctypes.c_uint32), ("SchedulingClass", ctypes.c_uint32)]
+
+
+class _ExtendedLimits(ctypes.Structure):
+    _fields_ = [("Basic", _BasicLimits), ("Io", ctypes.c_ulonglong * 6), ("ProcessMemoryLimit", ctypes.c_size_t),
+                ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcess", ctypes.c_size_t), ("PeakJob", ctypes.c_size_t)]
+
+
+def host_job_allows_breakaway():
+    """The updater must outlive CCA, so CCA refuses to start it inside a job that forbids breakaway.
+
+    GitHub's runners put every step in such a job, and a test cannot step outside it; there the replacement is only
+    covered by running this file locally (docs/ci.md says so)."""
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # Without these declarations the pseudo handle -1 is truncated to 32 bits and every query fails.
+    kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+    kernel32.IsProcessInJob.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+    kernel32.QueryInformationJobObject.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32,
+                                                   ctypes.c_void_p]
+    in_job = ctypes.c_int(0)
+    if not kernel32.IsProcessInJob(kernel32.GetCurrentProcess(), None, ctypes.byref(in_job)) or not in_job.value:
+        return True
+    info = _ExtendedLimits()
+    if not kernel32.QueryInformationJobObject(None, 9, ctypes.byref(info), ctypes.sizeof(info), None):
+        return True
+    return bool(info.Basic.LimitFlags & (0x800 | 0x1000))  # BREAKAWAY_OK or SILENT_BREAKAWAY_OK
+
+
+@unittest.skipUnless(host_job_allows_breakaway(), "the host job object does not allow breakaway, so the updater cannot start")
 class BrokerTests(unittest.TestCase):
     def scenario(self, fail_start=False, corrupt=False, same=False, wrong_metadata=False):
         root = Path(tempfile.mkdtemp(prefix="cca-update-broker-"))
