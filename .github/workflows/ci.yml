@@ -191,7 +191,7 @@ jobs:
   memory:
     name: 記憶體測試：洩漏量與 AddressSanitizer
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -201,20 +201,8 @@ jobs:
           python-version: "3.12"
       - name: 私有記憶體成長量（一般建置）
         run: cmd /c ".\build.bat memory-test"
-      - name: AddressSanitizer（越界、釋放後使用）
-        shell: pwsh
-        run: |
-          Remove-Item build\obj\*.obj -ErrorAction SilentlyContinue
-          $env:CCA_SANITIZE = "1"
-          cmd /c ".\build.bat memory-test"
-          if ($LASTEXITCODE -ne 0) { throw "memory-test under AddressSanitizer failed" }
-      - name: 單元測試也在 AddressSanitizer 下執行
-        shell: pwsh
-        run: |
-          Remove-Item build\obj\*.obj -ErrorAction SilentlyContinue
-          $env:CCA_SANITIZE = "1"
-          cmd /c ".\build.bat test"
-          if ($LASTEXITCODE -ne 0) { throw "unit tests under AddressSanitizer failed" }
+      - name: 全部原生測試在 AddressSanitizer 下執行（越界、釋放後使用）
+        run: python tools/run_native_tests.py --asan
 
   extreme:
     name: 極端環境：記憶體上限、單核心、怪路徑、損毀資料

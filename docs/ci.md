@@ -29,7 +29,9 @@ GitHub 的執行環境有兩個限制，測試對它們的處理方式要看得�
 
 - 一般建置：每組迴圈先暖機，再量私有位元組（`PrivateUsage`）在數千到數萬次迭代後的成長，超過 16 MiB 就失敗。這抓得到洩漏。
 - AddressSanitizer 建置：`CCA_SANITIZE=1` 讓 `build.bat` 把 `/MT` 換成 `/MD` 並加 `/fsanitize=address /Zi`（ASan 需要 DLL 執行階段；`vcvars` 已把 ASan 的 DLL 目錄放進 PATH）。這抓得到越界與釋放後使用，同樣的迴圈與變異輸入會被執行。MSVC 沒有 LeakSanitizer，而且 ASan 的隔離區會讓私有位元組暫時膨脹，所以這個模式不檢查成長量，只印出數字。
-- CI 另外把整套單元測試（`build.bat test`）也在 ASan 下跑一次。
+- CI 另外用 `python tools/run_native_tests.py --asan` 把全部原生測試目標（單元、接手、管線、品質…）都用 ASan 建置後執行。
+  `gemini-test` 除外：它把 `PATH` 設成空資料夾、再把受測程式複製成 `node.exe` 來跑，ASan 版找不到執行階段 DLL，探測程序啟動不了。
+  這一項在 CI 上抓到過真實缺陷：非 const 的 `Json::operator[]` 讀到缺鍵時會插入並重新配置，運算式裡先取得的參照因此懸空（`claude_agent.cpp`、`codex_agent.cpp`、`gemini_agent.cpp`、`app.cpp` 的 `TurnDone`），一般建置只會偶發當機。
 
 ## 極端環境
 
