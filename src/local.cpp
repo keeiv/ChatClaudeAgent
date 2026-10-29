@@ -159,7 +159,7 @@ void App::sendLocalStatus() {
             [this, base, lines](int status, const std::string& err) mutable {
                 // Still on the worker thread: ask each model what it supports, since a
                 // reviewer without tool calls cannot read files.
-                Json tags = Json::parse(*lines);
+                const Json tags = Json::parse(*lines);
                 Json caps = Json::object();
                 for (const auto& m : tags["models"].items()) {
                     std::string out, showErr;
@@ -212,7 +212,7 @@ void App::handleLocalPull(const Json& m) {
         ollama::request(
             "POST", "/api/pull", J({{"model", model}, {"stream", true}}).dump(),
             [this, model, last, failure](const std::string& line) {
-                Json j = Json::parse(line);
+                const Json j = Json::parse(line);
                 if (!j["error"].str().empty()) *failure = j["error"].str();
                 long long now = util::nowMs();
                 // Progress arrives many times a second; the UI needs a few updates.

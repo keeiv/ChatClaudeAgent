@@ -59,7 +59,7 @@ bool RuntimeSession::start(const Json& request, std::string* error) {
         options,
         [weak](const std::string& line) {
             if (line.size() > 12 * 1024 * 1024) return;
-            Json message = Json::parse(line);
+            const Json message = Json::parse(line);
             postToUi([weak, message] {
                 auto self = weak.lock();
                 if (!self) return;

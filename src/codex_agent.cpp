@@ -153,7 +153,7 @@ void CodexServer::removeThreadHandler(const std::string& threadId) { threads_.er
 
 void CodexServer::handleLine(const std::string& line) {
     if (line.empty() || line[0] != '{') return;
-    Json msg = Json::parse(line);
+    const Json msg = Json::parse(line);
     if (!msg.isObject()) return;
     bool hasId = msg.has("id") && !msg["id"].isNull();
     if (hasId && (msg.has("result") || msg.has("error")) && !msg.has("method")) {
@@ -451,14 +451,17 @@ void CodexThread::handle(const std::string& method, const Json& p, const Json& r
         lastUsage_ = p["tokenUsage"];
     } else if (method == "turn/completed") {
         const Json& turn = p["turn"];
-        const Json& last = lastUsage_["last"];
-        if (lastUsage_.isObject()) {
+        // Read through a const reference: the non-const operator[] would turn a missing tokenUsage into an empty object
+        // (defeating the isObject() check below) and insert absent keys, which reallocates and dangles `last`.
+        const Json& usage = lastUsage_;
+        const Json& last = usage["last"];
+        if (usage.isObject()) {
             emit(K::Usage, "",
                  J({{"inputTokens", last["inputTokens"].i64()},
                     {"cachedTokens", last["cachedInputTokens"].i64()},
                     {"outputTokens", last["outputTokens"].i64()},
                     {"contextUsed", last["inputTokens"].i64() + last["outputTokens"].i64()},
-                    {"contextWindow", lastUsage_["modelContextWindow"].i64()},
+                    {"contextWindow", usage["modelContextWindow"].i64()},
                     {"durationMs", turn["durationMs"].i64()}}));
         }
         std::string status = turn["status"].str("completed");

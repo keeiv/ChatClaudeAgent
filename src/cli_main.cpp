@@ -463,7 +463,7 @@ void Cli::arrangeConversations() {
 }
 
 void Cli::onHost(const std::string& json) {
-    Json m = Json::parse(json);
+    const Json m = Json::parse(json);
     std::string type = m["type"].str();
     dirty_ = true;
     if (type == "boot") {

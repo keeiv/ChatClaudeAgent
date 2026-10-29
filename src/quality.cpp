@@ -68,7 +68,7 @@ bool App::handleQuality(const Json& message) {
                 opt,
                 [this, life](const std::string& line) {
                     if (line.size() > 4 * 1024 * 1024) return;
-                    Json result = Json::parse(line);
+                    const Json result = Json::parse(line);
                     postToUi([this, life, result] {
                         if (!life.expired()) qualityResult(result);
                     });

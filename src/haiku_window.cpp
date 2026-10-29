@@ -250,7 +250,7 @@ void drainWork() {
 
 void onBridgeCall(const std::string& text) {
     if (!g_sim) return;
-    Json m = Json::parse(text);
+    const Json m = Json::parse(text);
     const std::string id = m["id"].str(), method = m["method"].str();
     Json params = m["params"].isObject() ? m["params"] : Json::object();
     auto finish = [](const std::string& id, const std::string& method, const std::string& project,

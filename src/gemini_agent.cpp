@@ -108,7 +108,7 @@ bool GeminiSession::send(const std::wstring& exe, const AgentConfig& config, con
 }
 
 void GeminiSession::line(const std::string& text) {
-    Json event = Json::parse(text);
+    const Json event = Json::parse(text);
     std::string type = event["type"].str();
     using K = AgentEvent::Kind;
     if (type == "init") {

@@ -361,7 +361,7 @@ void ClaudeSession::sendControlResponse(const std::string& requestId, Json respo
 
 void ClaudeSession::handleLine(const std::string& line) {
     if (line.empty() || line[0] != '{') return;
-    Json msg = Json::parse(line);
+    const Json msg = Json::parse(line);
     if (!msg.isObject()) return;
     std::string type = msg["type"].str();
 
@@ -686,8 +686,11 @@ void ClaudeSession::respondQuestion(const std::string& id, const Json& answers) 
 
 void ClaudeSession::handleResult(const Json& msg) {
     const Json& usage = msg["usage"];
-    long long ctxUsed = lastUsage_["input_tokens"].i64() + lastUsage_["cache_creation_input_tokens"].i64() +
-                        lastUsage_["cache_read_input_tokens"].i64() + lastUsage_["output_tokens"].i64();
+    // Read through a const reference: the non-const operator[] inserts a missing key and may reallocate, which left the
+    // earlier references of this same expression dangling.
+    const Json& last = lastUsage_;
+    long long ctxUsed = last["input_tokens"].i64() + last["cache_creation_input_tokens"].i64() +
+                        last["cache_read_input_tokens"].i64() + last["output_tokens"].i64();
     long long ctxWindow = 0;
     for (const auto& mu : msg["modelUsage"].fields()) {
         ctxWindow = std::max<long long>(ctxWindow, mu.second["contextWindow"].i64());

@@ -1218,14 +1218,17 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
         msg["endedAt"] = util::nowMs();
         msg.erase("retry");
         if (k == AgentKind::Claude) pollClaudeUsage(true);
+        // The inserts and erase above reallocated or shifted msg's members, so `blocks` from the top of this function
+        // may dangle; look the array up again.
+        Json& finalBlocks = msg["blocks"];
         if (status == "failed" && !d["error"].str().empty()) {
-            blocks.push(J({{"type", "error"}, {"id", util::newId()}, {"text", d["error"]}}));
+            finalBlocks.push(J({{"type", "error"}, {"id", util::newId()}, {"text", d["error"]}}));
         }
         // A reply with no text (for example only tool calls) still gets the CLI's final summary.
         if (messageText(msg).empty() && !d["text"].str().empty() && status == "completed") {
-            blocks.push(J({{"type", "text"}, {"id", util::newId()}, {"text", d["text"]}, {"done", true}}));
+            finalBlocks.push(J({{"type", "text"}, {"id", util::newId()}, {"text", d["text"]}, {"done", true}}));
         }
-        for (auto& b : blocks.items()) {
+        for (auto& b : finalBlocks.items()) {
             if (b["type"].str() == "tool" && b["status"].str() == "running") b["status"] = "interrupted";
             if ((b["type"].str() == "approval" || b["type"].str() == "question") && b["state"].str() == "pending") {
                 b["state"] = "cancelled";
@@ -1454,7 +1457,7 @@ void App::handleQuestion(const Json& m) {
 }
 
 void App::onUiMessage(const std::string& text) {
-    Json m = Json::parse(text);
+    const Json m = Json::parse(text);
     std::string type = m["type"].str();
     if (handleUpdate(m)) return;
     if (updateInstalling_ && type != "ready" && type != "win") {

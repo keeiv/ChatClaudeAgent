@@ -161,7 +161,7 @@ void LocalSession::runTurn(std::weak_ptr<LocalSession> self, std::string model, 
         status = ollama::perform(
             "POST", "/api/chat", body.dump(),
             [&](const std::string& line) {
-                Json j = Json::parse(line);
+                const Json j = Json::parse(line);
                 if (!j.isObject()) return;
                 if (!j["error"].str().empty()) roundErr = j["error"].str();
                 if (j["done"].boolean()) stats = j;
