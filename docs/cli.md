@@ -1,6 +1,6 @@
 # ChatClaudeAgent CLI
 
-CLI 與桌面版共用 C++ 的對話、權限、存檔和協作核心。CLI 不建立 WebView2，也不載入頭像或橫幅圖檔；名稱與角色性格用 `/name`、`/persona` 設定。
+CLI 與桌面版共用 C++ 的對話、權限、存檔和協作核心。CLI 不建立 WebView2；成員名稱固定為 Claude、GPT、Gemini 與本地模型 1、2。
 
 ## 開啟與操作
 
@@ -27,11 +27,7 @@ CLI 與桌面版共用 C++ 的對話、權限、存檔和協作核心。CLI 不�
 | `/git never 規則`、`/git allow 規則` | 新增或移除永遠不提交規則；不加規則時列出全部 |
 | `/git login`、`/git identity 名稱 e-mail` | 遠端需要登入時開啟 Git 認證管理員的登入視窗；設定提交身分，加 `--repo` 只套用到目前倉庫 |
 | `/resume-auto on`、`/resume-auto off` | 所有 AI 額度用完而停止的任務，在額度恢復後自動接續 |
-| `/name`、`/persona` | 改名稱、選用或建立角色性格 |
-| `/activity daily\|weekly\|total` | 查看最近 14 個日期的每日、近 7 日或已保存紀錄累計用量 |
 | `/about` | 查看開發目的與設計原則 |
-| `/badges` | 查看本機持有與未取得的七款徽章，含展示／隱藏／收藏狀態 |
-| `/badges hide\|show\|first ID` | 隱藏、顯示或將已持有徽章排到第一位，與桌面共用展示設定 |
 | `/humanize on` | 啟用去 AI 化，保留桌面版已設定的補充規則 |
 | `/flow auto`、`/flow compact`、`/flow off` | 完整、自動精簡或隱藏協作流程圖 |
 | `/motion on`、`/motion off` | 控制呼吸燈、思考轉圈和交接圓點 |
@@ -80,7 +76,7 @@ Enter 送出，Shift+Enter 或 Ctrl+J 換行，Tab 補完斜線指令。方向�
 | [Microsoft ConPTY](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session) | 用真正的偽終端機驗證輸入、縮放和輸出；讀寫管線分開處理。 |
 | [xterm.js 編碼](https://xtermjs.org/docs/guides/encoding/) | 測試把錄製的 UTF-8 位元組交給終端機解碼器，確認中文與控制序列重播。 |
 
-配色沿用專案既有的 Claude 橘與 GPT 綠，再以淡藍色表示 CCA 的輸入和選取狀態；這是本專案的識別配色。圖標採用 BOT. 的色塊間隙、切角和圓點，詳細規格在 [圖標說明](../assets/logo/README.md)。
+預設配色沿用終端機自己的背景，文字使用桌面版的成員識別色（Claude 陶土、GPT 綠、Gemini 紫），CCA 自己的輸入與選取狀態用天藍；`/theme cca-light` 換成亮色紙面。啟動時顯示的標誌是 [CCA 圖標](brand-1.0.md) 的 16 × 16 雙色點陣。
 
 ## 重跑驗證
 
@@ -116,4 +112,4 @@ PNG 使用 Consolas 和微軟正黑體重建錄製畫面，可查排版、文字
 
 桌面欄寬不影響終端機；CLI 的閱讀寬度與字型由終端機控制。完整邊界與失敗行為見 [工作台與軟體更新](workbench.md)。
 
-Gemini 的顯示名稱與性格可透過 `/name`、`/persona` 選取 Gemini 設定，與桌面共用本機資料。多代理流程依節點順序列出實際狀態；終端高度不足時保留目前節點摘要。Gemini 只使用 CLI 預設模型，不列入 `/model`、`/effort` 的可選目錄。啟動時加上 `gemini` 直接開 Gemini 私訊（例如 `ChatClaudeAgent-CLI.exe gemini`）；聊天中被跳過的成員以「» 跳過」一行標示，全部額度用完的強制停止摘要以紅色方塊標示。
+多代理流程依節點順序列出實際狀態；終端高度不足時保留目前節點摘要。

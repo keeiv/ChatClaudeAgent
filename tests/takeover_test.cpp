@@ -142,6 +142,9 @@ static int fakeCodex() {
             bool context = input.find("STEP_A_DONE; STEP_B_PENDING") != std::string::npos && input.find("ORIGINAL_TASK") != std::string::npos;
             std::string answer = context ? "CONTEXT_OK; STEP_B_DONE" : "CONTEXT_MISSING";
             if (util::getEnv(L"CCA_TEST_CLI_FIXTURE") == L"1") answer = "模擬後端已收到審查提示。\n\nVERDICT: APPROVE";
+            // A reply in English fails the language check every time (the compliance retry scenario).
+            if (util::getEnv(L"CCA_TEST_ENGLISH") == L"1")
+                answer = "The project looks fine and every branch is handled.";
             if (util::getEnv(L"CCA_TEST_OPINION") == L"1") {
                 readonly &= m["params"]["sandboxPolicy"]["type"].str() == "readOnly";
                 answer = readonly ? opinionFixture(input.find("意見整理") != std::string::npos) : "READONLY_MISSING";
@@ -634,8 +637,8 @@ struct TakeoverTestAccess {
         scenario("dm-gpt-primary-no-claude", "gpt-only", true, false, false);
 
         {
-            // Compliance checks with a real (fixture) backend: GPT's reply lacks the persona's form of
-            // address every time, so it goes back twice and then stays, marked, for the user to judge.
+            // Compliance checks with a real (fixture) backend: GPT answers in English every time,
+            // so the reply goes back twice and then stays, marked, for the user to judge.
             std::wstring data = util::joinPath(root, L"guard");
             util::ensureDir(data);
             SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
@@ -650,12 +653,7 @@ struct TakeoverTestAccess {
             app.settings_["claudePath"] = util::narrow(exe);
             app.settings_["codexPath"] = util::narrow(exe);
             check(app.guardOn() && app.guardRetries() == 2, "compliance checks are on by default with two send-backs");
-            // Personas are user-owned; the retry test supplies its own required address explicitly.
-            app.settings_["personas"] = Json(Json::Array{J({{"id", "guard-fixture"},
-                                                            {"name", "測試審查員"},
-                                                            {"address", "測試指揮"},
-                                                            {"prompt", "每次回覆稱呼測試指揮。"}})});
-            app.settings_["persona"]["codex"] = "guard-fixture";
+            SetEnvironmentVariableW(L"CCA_TEST_ENGLISH", L"1");
             Conversation* c = app.find("dm-codex");
             c->cwd = root;
             app.onUiMessage(J({{"type", "conv.send"}, {"id", c->id}, {"text", "幫我看一下這個專案"}}).dump());
@@ -679,6 +677,7 @@ struct TakeoverTestAccess {
             check(sendBacks == 2 && finals == 1, "two send-back notices, then one final notice");
             check(rejected == 3, "every failing reply is marked");
             check(c->guardTry[(int)AgentKind::Codex] == 0, "the send-back count resets after giving up");
+            SetEnvironmentVariableW(L"CCA_TEST_ENGLISH", nullptr);
             app.shutdown();
             pump();
         }

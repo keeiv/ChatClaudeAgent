@@ -33,47 +33,39 @@ const { chromium } = require('playwright');
   const open = section => page.evaluate(section => window.CCA_DEV.openSettings(section), section);
   const theme = () => page.locator('html').getAttribute('data-theme');
   await open('themes');
-  check(await page.getByRole('radio').count() === 16, 'provider light/dark pairs, source themes, the two halyosy themes, Halloween pair and Hunt');
-  await page.getByRole('radio', { name: 'Anthropic Claude · 亮色', exact: true }).click();
-  check(await theme() === 'claude', 'preview applies full interface');
+  check(await page.getByRole('radio').count() === 2, 'the ordinary edition offers the dark and light looks');
+  await page.getByRole('radio', { name: 'CCA 亮色', exact: true }).click();
+  check(await theme() === 'cca-light', 'preview applies the whole interface');
   check(await page.evaluate(() => !window.appearanceRequests.some(m => m.type === 'theme.set')), 'preview does not write settings');
   await page.getByRole('button', { name: '取消預覽', exact: true }).click();
-  check(await theme() === 'cca', 'cancel restores saved theme');
-  await page.getByRole('radio', { name: 'OpenAI Codex · 亮色', exact: true }).click();
-  await page.waitForFunction(() => document.activeElement?.dataset.themeOption === 'codex');
+  check(await theme() === 'cca', 'cancel restores the saved look');
+  await page.getByRole('radio', { name: 'CCA 暗色', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => document.activeElement?.dataset.themeOption === 'codex-dark');
-  check(await theme() === 'codex-dark', 'keyboard selects separate dark variant');
-  await page.keyboard.press('ArrowRight');
-  await page.waitForFunction(() => document.activeElement?.dataset.themeOption === 'claude');
-  check(await theme() === 'claude' && await page.getByRole('radio', { name: 'Anthropic Claude · 亮色', exact: true }).evaluate(e => e === document.activeElement), 'keyboard radio selection and focus');
-  await page.keyboard.press('End');
-  await page.waitForFunction(() => document.activeElement?.dataset.themeOption === 'hunt');
-  check(await theme() === 'hunt', 'End chooses final theme');
+  await page.waitForFunction(() => document.activeElement?.dataset.themeOption === 'cca-light');
+  check(await theme() === 'cca-light', 'arrow keys move the radio selection');
   await page.keyboard.press('Home');
   await page.waitForFunction(() => document.activeElement?.dataset.themeOption === 'cca');
-  check(await theme() === 'cca', 'Home chooses original theme');
-  await page.getByRole('radio', { name: 'Anthropic Claude · 亮色', exact: true }).click();
-  await page.getByRole('button', { name: '套用主題', exact: true }).click();
+  check(await theme() === 'cca', 'Home chooses the first look');
+  await page.getByRole('radio', { name: 'CCA 亮色', exact: true }).click();
+  await page.getByRole('button', { name: '套用', exact: true }).click();
   await page.keyboard.press('Escape');
-  check(await theme() === 'claude', 'successful save survives closing settings');
+  check(await theme() === 'cca-light', 'a saved look survives closing settings');
   await open('themes');
-  await page.getByRole('radio', { name: 'Google Gemini · 亮色', exact: true }).click();
+  await page.getByRole('radio', { name: 'CCA 暗色', exact: true }).click();
   await page.evaluate(() => { window.mockDeskSaveFailure = true; });
-  await page.getByRole('button', { name: '套用主題', exact: true }).click();
-  check(await theme() === 'claude', 'failed save restores previous theme');
+  await page.getByRole('button', { name: '套用', exact: true }).click();
+  check(await theme() === 'cca-light', 'a failed save restores the previous look');
   await page.evaluate(() => { window.mockDeskSaveFailure = false; });
-  await page.getByRole('radio', { name: 'The Sky', exact: true }).click();
+  await page.getByRole('radio', { name: 'CCA 暗色', exact: true }).click();
   await page.keyboard.press('Escape');
-  check(await theme() === 'claude', 'closing uncommitted preview restores saved theme');
+  check(await theme() === 'cca-light', 'closing an uncommitted preview restores the saved look');
 
-  // A theme reserved for a special edition is not offered in the ordinary edition.
+  // A look reserved for a special edition is not offered in the ordinary edition.
   const themes = await page.evaluate(() => window.CCAThemeCatalog.filter(t => !t.edition).map(t => ({ id: t.id, name: t.name })));
   for (const item of themes) {
     await open('themes');
     await page.getByRole('radio', { name: item.name, exact: true }).click();
-    await page.screenshot({ path: `build/oss-upgrade/screenshots/${item.id}-settings.png` });
-    const apply = page.getByRole('button', { name: '套用主題', exact: true });
+    const apply = page.getByRole('button', { name: '套用', exact: true });
     if (await apply.isEnabled()) await apply.click();
     await page.keyboard.press('Escape');
     const contrast = await page.evaluate(() => {
@@ -81,41 +73,15 @@ const { chromium } = require('playwright');
       const rgb = hex => hex.match(/[a-f\d]{2}/gi).map(v => parseInt(v, 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
       const lum = hex => rgb(hex).reduce((sum, c, i) => sum + c * [.2126, .7152, .0722][i], 0);
       const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
-      return Object.fromEntries(['text', 'text-muted', 'claude', 'codex'].map(k => [k, ratio(get(k), get('bg-chat'))]));
+      return { ...Object.fromEntries(['text', 'text-muted', 'claude-name', 'codex-name'].map(k => [k, ratio(get(k), get('bg-chat'))])),
+        'brand-ink': ratio(get('brand-ink'), get('brand')) };
     });
-    if (item.id !== 'cca') for (const [key, ratio] of Object.entries(contrast)) check(ratio >= 4.5, `${item.id} ${key} contrast ${ratio}`);
-    // Each theme must show the device borrowed from its source, not only a different palette.
-    const signature = await page.evaluate(id => {
-      const style = (selector, pseudo, prop) => {
-        const el = document.querySelector(selector);
-        return el ? getComputedStyle(el, pseudo).getPropertyValue(prop) : '';
-      };
-      const devices = {
-        codex: () => style('.member-head', '::before', 'content').includes('>_'),
-        claude: () => style('.member-head', '::before', 'content').includes('✻'),
-        gemini: () => style('.member-head', '::before', 'clip-path').startsWith('polygon(50% 0'),
-        'tokyo-night': () => style('.chat-head .title', null, 'border-top-width') === '2px',
-        'urban-legend': () => style('#main', '::after', 'content').includes('URBAN LEGEND'),
-        'the-sky': () => style('#rail', null, 'background-image').includes('linear-gradient'),
-        infinite: () => style('.member-head', '::after', 'content').includes(']'),
-        connecting: () => style('.chat-head', '::after', 'background-image').includes('linear-gradient') &&
-          style('.messages', '::before', 'width') === '2px',
-        blessing: () => style('.chat-head', null, 'background-image').includes('radial-gradient'),
-        halloween: () => style('.chat-head', '::after', 'background-image').includes('conic-gradient') &&
-          style('.chat-scroll', null, 'background-image').includes('repeating-conic-gradient'),
-        hunt: () => style('#main', '::after', 'content').includes('追獵行動') &&
-          style('.composer', null, 'clip-path').startsWith('polygon'),
-      };
-      const check = devices[id.replace(/-dark$/, '')];
-      return check ? check() : true;
-    }, item.id);
-    check(signature, `${item.id} shows its own signature device`);
+    for (const [key, ratio] of Object.entries(contrast)) check(ratio >= 4.5, `${item.id} ${key} contrast ${ratio}`);
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${item.id} no horizontal overflow`);
     await page.screenshot({ path: `build/oss-upgrade/screenshots/${item.id}-chat.png` });
     await page.setViewportSize({ width: 1000, height: 600 });
     await open('themes');
     check(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${item.id} narrow settings width`);
-    await page.screenshot({ path: `build/oss-upgrade/screenshots/${item.id}-narrow.png` });
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 1440, height: 1000 });
     results.push({ ...item, contrast });

@@ -43,7 +43,7 @@ const { chromium } = require('playwright');
     check(await page.getByText('/security').isVisible(), 'enabled plugin commands are listed');
     await page.evaluate(() => window.CCA_DEV.openSettings('themes'));
     await page.getByRole('radio', { name: '餘燼', exact: true }).click();
-    check(await page.evaluate(() => document.documentElement.dataset.theme) === 'hunt', 'a plugin theme borrows its base theme devices');
+    check(await page.evaluate(() => document.documentElement.dataset.theme) === 'plugin', 'a plugin theme is marked as a plugin look');
     check(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--signal').trim()) === '#ff8a3d',
       'a plugin theme applies its own colors');
     await page.getByRole('button', { name: '取消預覽', exact: true }).click();

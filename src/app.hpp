@@ -80,7 +80,6 @@ struct Conversation {
     std::string testCommand;                // groups: the command the guard runs in the project folder
     std::string mode;                       // a CCA plugin mode applied here ("plugin/mode"), or empty
     std::vector<std::string> localMembers;  // groups: invited local reviewers (local1/local2)
-    std::string avatar;                     // groups: own avatar, a file in App::mediaDir()
     long long createdAt = 0;
     std::vector<Json> messages;
 
@@ -136,12 +135,12 @@ struct AgentStatus {
 // project folder (local.cpp). Empty when the folder has neither.
 std::string projectReviewRules(const std::wstring& cwd);
 
-// Avatars and banners live as plain file names in App::mediaDir() (profile.cpp).
+// Pictures (screenshots, image artifacts) live as plain file names in App::mediaDir() (profile.cpp).
 bool isMediaName(const std::string& name);
 void removeMediaFile(const std::string& file);
-// A cropped picture from the page ("data:image/png;base64,...") as PNG bytes; empty unless it is a PNG.
+// A picture from the page ("data:image/png;base64,...") as PNG bytes; empty unless it is a PNG.
 std::string decodePngDataUrl(const std::string& data, bool screenshot = false);
-// Deletes pictures picked for cropping but never saved.
+// Deletes avatar crops an older version left behind.
 void cleanTempMedia();
 
 class App {
@@ -160,12 +159,11 @@ public:
     // Host hooks (Win32 side).
     std::function<void(const std::string& action)> windowAction;  // min | max | close | drag | flash
     std::function<std::wstring(const std::wstring& initial)> pickFolder;
-    std::function<std::wstring()> pickImage;
     std::function<void(const std::wstring& target)> openExternal;
     // Desktop only: opens the Haiku phone simulator for an APK. Empty in the CLI.
     std::function<bool(const std::wstring& apk, std::string& error)> openHaiku;
 
-    // Where custom avatars and banners live (served to the page as https://media.cca.app/).
+    // Where screenshots and image artifacts live (served to the page as https://media.cca.app/).
     static std::wstring mediaDir();
 
 private:
@@ -267,30 +265,16 @@ private:
     bool quotaFailure(AgentKind k, const Json& message) const;
     void recordQuotaHit(AgentKind k, long long resetsAtMs);
     std::map<std::string, long long> quotaUntil_;  // agent -> ms; set by a failed turn with an unknown reset
-    // ---- profiles, personas and daily mode (profile.cpp)
+    // ---- names, settings defaults and daily mode (profile.cpp)
     std::string nameOf(AgentKind k) const;
     std::string userName() const;
-    Json allPersonas() const;
-    std::string personaPrompt(AgentKind k) const;
     std::string dailyModel(AgentKind k) const;
     std::string dailyEffort(AgentKind k) const;
     void ensureProfileDefaults();
     void sendSettings();
-    Json badgeState() const;
-    void handleBadgeDisplay(const Json& m);
     Json groupOrder() const;
     void handleGroupOrder(const Json& message);
     void reconfigureAll();
-    bool persistProfile(const std::string& who, const Json& profile);
-    bool persistPersonaSettings(const Json& previous);
-    bool persistGroupAvatar(Conversation& c, const std::string& file);
-    void handleProfileSet(const Json& m);
-    void handleProfileImage(const Json& m);
-    void beginImage(const std::string& who, const std::string& kind, const std::string& convId);
-    void handleImageAction(const Json& m);
-    void handlePersonaSave(const Json& m);
-    void handlePersonaDelete(const Json& m);
-    void handlePersonaAssign(const Json& m);
     void handleDailySet(const Json& m);
     // 去 AI 化 (humanize.cpp holds the rules)
     bool humanizeOn() const { return settings_["humanize"]["enabled"].boolean(); }
@@ -431,7 +415,6 @@ private:
     SendFn send_;
     std::vector<std::unique_ptr<Conversation>> convs_;
     Json settings_ = Json::object();
-    Json pendingImage_ = Json::object();  // The host-issued crop token binds a temporary image to its target.
     AgentStatus claudeStatus_, codexStatus_;
     AgentStatus geminiStatus_;
     std::unique_ptr<ChildProcess> geminiLogin_;
@@ -446,11 +429,7 @@ private:
     Json usage_ = J({{"claude", Json::object()}, {"codex", Json::object()}});
     std::string codexLoginId_;
     Snapshots snapshots_;
-    Json usageHistory_ = Json::object();   // "YYYY-MM-DD" -> agent -> totals
-    Json personaPresets_ = Json::array();  // optional user-owned file, never embedded
-    Json badgeGrants_ = Json::object();    // local decoration grants, never inferred from a name
-    std::string badgeGrantProblem_;
-    std::string personaPresetProblem_;
+    Json usageHistory_ = Json::object();  // "YYYY-MM-DD" -> agent -> totals
     bool usageDirty_ = false;
     std::unique_ptr<ChildProcess> ollamaServe_;
     Json hardware_;

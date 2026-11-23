@@ -4,15 +4,14 @@
   "name": "夜班",
   "version": "1.0.0",
   "author": "MoriTeahouse",
-  "description": "深夜審查用：一款借用追獵行動裝置的餘燼色主題、一個嚴格審查模式，以及一個安全審查指令。",
+  "description": "深夜審查用：一款餘燼色的配色、一個嚴格審查模式，以及一個安全審查指令。",
   "themes": [
     {
       "id": "ember",
       "name": "餘燼",
-      "description": "追獵行動的反向切角與準星，換成餘燼橙。",
+      "description": "暗底配餘燼橙的訊號色。",
       "scheme": "dark",
       "shape": "slash",
-      "base": "hunt",
       "palette": {
         "rail": "#060504",
         "side": "#0b0908",

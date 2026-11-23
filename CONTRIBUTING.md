@@ -85,7 +85,9 @@ python tests/run_browser_tests.py
 ## 提交與拉取請求
 
 - 一個提交做一件事。提交訊息第一行用 `類型: 說明`，類型是 `feat`、`fix`、`docs`、`test`、`ci`、`build`、`refactor`、`perf`、`chore` 之一，說明用英文祈使句，例如 `fix: reject junctions in project paths`。需要的話空一行，補上為什麼這樣改。
-- 不要改寫已經推送的歷史。拉取請求通常以 squash 合併，標題請依同樣格式寫。
+- 不要改寫已經推送的歷史。main 受分支保護，只接受拉取請求，必須通過「CI 全部通過」；倉庫只允許 squash 合併，標題請依同樣格式寫；合併後來源分支會被刪除（自動合併的分支由 `branch-cleanup.yml` 在一小時內清掉）。
+- 擁有者從本倉庫分支開的拉取請求會在 CI 綠燈後自動合併；其他人的拉取請求由擁有者審閱後合併。
+- 發行由 CD 負責：改 `src/version.hpp` 的版本號（用 `python tools/make_release.py --next <目前版本>` 查下一版，文字與數字版本一起改）並合併後，[cd.yml](.github/workflows/cd.yml) 會在 Windows 建置、跑單元測試並建立 GitHub Release；已存在的版本標籤不會重發。
 - 拉取請求描述說明：問題是什麼、怎麼解、跑了哪些測試、哪些**沒有**跑。介面改動附截圖。
 - 保持拉取請求小而聚焦。順手修的無關問題請另開一個。
 

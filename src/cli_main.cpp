@@ -199,8 +199,6 @@ const Command kCommands[] = {
     {"/undo-revert", "", "復原上一次 /revert"},
     {"/end", "", "協作暫停時結束"},
     {"/show", "", "顯示上一則回覆的完整指令輸出和 diff"},
-    {"/name", "", "改你和 AI 的名稱"},
-    {"/persona", "", "替 AI 選性格，或建立、刪除自訂性格"},
     {"/humanize", "[on|off]", "去 AI 化開關"},
     {"/flow", "[auto|compact|off]", "協作流程圖：完整、自動收合或隱藏"},
     {"/motion", "[on|off]", "呼吸燈、思考轉圈與交接圓點"},
@@ -227,9 +225,7 @@ const Command kCommands[] = {
      "fetch|pull on|off]",
      "版本控制：選檔提交、推送、提交紀錄與永遠不提交規則"},
     {"/resume-auto", "[on|off]", "全部額度用完後，額度恢復時自動接續任務"},
-    {"/activity", "[daily|weekly|total]", "查看 Token 活動：每日、近 7 日或紀錄累計"},
     {"/about", "", "查看 CCA 的開發目的與設計原則"},
-    {"/badges", "[hide|show|first ID]", "查看本機徽章，或調整個人檔案的展示"},
     {"/pipeline", "<JSON檔|off>", "載入目前群組的多代理流程"},
     {"/inbox", "", "列出所有對話的待辦與完成通知"},
     {"/evidence", "", "檢視需求的主機驗證證據"},
@@ -316,7 +312,6 @@ private:
     const Json& state() const;
     std::string name(const std::string& who) const;
     std::string convTitle(const Json& c) const;
-    const Json* persona(const std::string& who) const;
     std::map<std::string, std::string> queuedDrafts_;
     // Tool hashes the user saw in the latest /toolserver-test, per server; /toolserver-pin can only pin these.
     std::map<std::string, Json> toolHashes_;
@@ -367,8 +362,6 @@ private:
     void pickModel(const std::string& agent);
     void pickEffort(const std::string& agent);
     void pickPermission();
-    void pickPersona(const std::string& who);
-    void newPersona(const std::string& who);
     void showStatus();
     void showHelp();
     void arrangeConversations();
@@ -377,9 +370,8 @@ private:
     std::vector<std::string> inbox_;
     bool booted_ = false;
     std::string version_, winUser_;
-    Json convs_ = Json::array(), states_ = Json::object(), settings_ = Json::object(), personas_ = Json::array();
+    Json convs_ = Json::array(), states_ = Json::object(), settings_ = Json::object();
     Json auth_ = Json::object(), models_ = Json::object(), usage_ = Json::object();
-    Json badges_ = Json::object();
     Json groupOrder_ = Json::array();
     std::string current_;
     std::string reviewBase_;  // checkpoint of the last /review, so /revert puts files back to it
@@ -470,14 +462,12 @@ void Cli::onHost(const std::string& json) {
         booted_ = true;
         version_ = m["version"].str();
         winUser_ = m["user"]["name"].str();
-        personas_ = m["personas"];
         convs_ = m["convs"];
         groupOrder_ = m["groupOrder"];
         arrangeConversations();
         for (const auto& s : m["states"].items()) states_[s["id"].str()] = s;
         settings_ = m["settings"];
         tui::setTheme(settings_["theme"].str("cca"));
-        badges_ = m["badges"];
         models_ = m["models"];
         usage_ = m["usage"];
     } else if (type == "auth") {
@@ -583,8 +573,6 @@ void Cli::onHost(const std::string& json) {
             groupOrder_ = m["groupOrder"];
             arrangeConversations();
         }
-        if (m.has("badges")) badges_ = m["badges"];
-        if (m.has("personas")) personas_ = m["personas"];
     } else if (type == "theme.result") {
         toast(m["ok"].boolean() ? "介面主題已保存" : m["error"].str(), m["ok"].boolean() ? "ok" : "error");
     } else if (type == "routing.result") {
@@ -593,8 +581,6 @@ void Cli::onHost(const std::string& json) {
         const auto& r = m["result"];
         note(r["category"].str() + " · " + r["modelName"].str() + " · " + r["effort"].str("後端預設"));
         note(r["reason"].str());
-    } else if (type == "badges.result") {
-        toast(m["ok"].boolean() ? "徽章顯示設定已儲存" : m["error"].str(), m["ok"].boolean() ? "ok" : "error");
     } else if (type == "groups.order.result") {
         toast(m["ok"].boolean() ? "群組順序已儲存" : m["error"].str(), m["ok"].boolean() ? "ok" : "error");
     } else if (type == "extensions") {
@@ -772,26 +758,13 @@ const Json& Cli::state() const {
 }
 
 std::string Cli::name(const std::string& who) const {
-    std::string n = util::trim(settings_["profiles"][who]["name"].str());
-    if (!n.empty()) return n;
     if (who == "user") return winUser_.empty() ? "你" : winUser_;
-    if (who == "local1" || who == "local2") {
-        if (const Json* p = persona(who)) return (*p)["name"].str();
-        return who == "local1" ? "本地模型 1" : "本地模型 2";
-    }
+    if (who == "local1" || who == "local2") return who == "local1" ? "本地模型 1" : "本地模型 2";
     return who == "claude" ? "Claude" : who == "codex" ? "GPT" : who == "gemini" ? "Gemini" : who;
 }
 
 std::string Cli::convTitle(const Json& c) const {
     return c["kind"].str() == "group" ? c["name"].str() : name(c["kind"].str());
-}
-
-const Json* Cli::persona(const std::string& who) const {
-    std::string id = settings_["persona"][who].str();
-    for (const auto& p : personas_.items()) {
-        if (p["id"].str() == id) return &p;
-    }
-    return nullptr;
 }
 
 void Cli::open(const std::string& id) {
@@ -833,9 +806,6 @@ void Cli::printHeader() {
         Line l = {{tui::fg(tui::agentColor(a)), "● "},
                   {tui::fg(tui::agentColor(a), true), name(a)},
                   {tui::muted(), "  " + cli + " · " + role}};
-        if (const Json* p = persona(a)) {
-            if ((*p)["name"].str() != name(a)) l.push_back({tui::faint(), " · 性格 " + (*p)["name"].str()});
-        }
         return l;
     };
     text.push_back(who("claude", "Claude Code", "可切換主刀"));
@@ -1954,83 +1924,6 @@ void Cli::pickPermission() {
     openPicker(std::move(p));
 }
 
-void Cli::pickPersona(const std::string& who) {
-    bool local = who == "local1" || who == "local2";
-    std::string cur = settings_["persona"][who].str();
-    Picker p;
-    p.title = name(who) + " 的性格";
-    Item none{"不使用性格", "用 AI 原本的語氣", "none"};
-    none.checkable = true;
-    none.checked = cur == "none" || cur.empty();
-    p.items.push_back(none);
-    for (const auto& x : personas_.items()) {
-        std::string a = x["agent"].str();
-        bool fits = a == "any" || a.empty() || a == who || (local && a == "local");
-        if (!fits) continue;
-        Item it{x["name"].str(), tui::clipText(x["summary"].str(), 60) + (x["builtin"].boolean() ? "" : "（自訂）"),
-                x["id"].str()};
-        it.checkable = true;
-        it.checked = it.value == cur;
-        p.items.push_back(it);
-    }
-    p.items.push_back({"＋ 建立新的性格", "寫下身分、性格和說話方式", "+new", C::kBrand});
-    bool hasCustom = false;
-    for (const auto& x : personas_.items()) hasCustom |= !x["builtin"].boolean();
-    if (hasCustom) p.items.push_back({"－ 刪除自訂性格", "", "+delete", C::kErr});
-    p.onPick = [this, who](Item& it) {
-        if (it.value == "+new") {
-            newPersona(who);
-            return false;
-        }
-        if (it.value == "+delete") {
-            Picker del;
-            del.title = "刪除哪個自訂性格？";
-            for (const auto& x : personas_.items()) {
-                if (!x["builtin"].boolean())
-                    del.items.push_back(
-                        {x["name"].str(), tui::clipText(x["summary"].str(), 60), x["id"].str(), C::kErr});
-            }
-            del.onPick = [this](Item& d) {
-                ui(J({{"type", "persona.delete"}, {"id", d.value}}));
-                return false;
-            };
-            openPicker(std::move(del));
-            return false;
-        }
-        ui(J({{"type", "persona.assign"}, {"agent", who}, {"id", it.value}, {"rename", it.value != "none"}}));
-        return false;
-    };
-    openPicker(std::move(p));
-}
-
-void Cli::newPersona(const std::string& who) {
-    auto draft = std::make_shared<Json>(Json::object());
-    Ask a;
-    a.title = "新性格：名稱";
-    a.placeholder = "例如：耐心的老師";
-    a.done = [this, who, draft](const std::string& nm) {
-        (*draft)["name"] = nm;
-        Ask b;
-        b.title = "新性格：一句話簡介（選填）";
-        b.placeholder = "例如：說明很仔細，會先講為什麼";
-        b.allowEmpty = true;
-        b.done = [this, who, draft](const std::string& summary) {
-            (*draft)["summary"] = summary;
-            Ask c;
-            c.title = "新性格：身分、性格和說話方式";
-            c.placeholder = "Shift+Enter 換行。CCA 會自動加上規則：角色只影響語氣，不影響程式品質";
-            c.done = [this, who, draft](const std::string& prompt) {
-                (*draft)["prompt"] = prompt;
-                (*draft)["agent"] = who == "local1" || who == "local2" ? "local" : who;
-                ui(J({{"type", "persona.save"}, {"persona", *draft}, {"assignTo", who}}));
-            };
-            ask(std::move(c));
-        };
-        ask(std::move(b));
-    };
-    ask(std::move(a));
-}
-
 void Cli::showHelp() {
     int cols = std::max(term::cols() - 1, 20);
     std::vector<Line> out = {{}, {{tui::fg(C::kBrand, true), "  指令"}}};
@@ -2455,84 +2348,6 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
             for (auto& line : tui::wrap({{tui::muted(), text}}, std::max(20, term::cols() - 1), L("  "), L("  ")))
                 out.push_back(line);
         commit(out);
-        return;
-    }
-    if (cmd == "/badges") {
-        if (args.empty()) {
-            note("本機徽章 · " + std::to_string(badges_["owned"].size()) + " 枚 · 展示上限 6 枚", C::kBrand);
-            Json sorted = Json::array();
-            for (const auto& id : badges_["order"].items())
-                for (const auto& badge : badges_["catalog"].items())
-                    if (badge["id"] == id) sorted.push(badge);
-            for (const auto& badge : badges_["catalog"].items()) {
-                bool owned = false;
-                for (const auto& id : badges_["owned"].items()) owned |= id == badge["id"];
-                if (!owned) sorted.push(badge);
-            }
-            for (const auto& badge : sorted.items()) {
-                const std::string id = badge["id"].str();
-                bool owned = false, hidden = false, displayed = false;
-                for (const auto& item : badges_["owned"].items()) owned |= item.str() == id;
-                for (const auto& item : badges_["hidden"].items()) hidden |= item.str() == id;
-                for (const auto& item : badges_["display"].items()) displayed |= item.str() == id;
-                note(std::string(owned ? (hidden      ? "[隱藏] "
-                                          : displayed ? "[展示] "
-                                                      : "[收藏] ")
-                                       : "[未取得] ") +
-                         badge["name"].str() + " · " + id,
-                     owned ? C::kBrand : C::kMuted);
-            }
-            note("排序與隱藏僅調整展示；本機徽章不提供權限或帳號認證。");
-        } else {
-            size_t space = args.find(' ');
-            std::string action = args.substr(0, space),
-                        id = space == std::string::npos ? "" : util::trim(args.substr(space + 1));
-            bool owned = false;
-            for (const auto& item : badges_["owned"].items()) owned |= item.str() == id;
-            if (!owned || (action != "hide" && action != "show" && action != "first")) {
-                toast("用法：/badges hide|show|first ID；僅可調整已持有的徽章。", "error");
-                return;
-            }
-            Json order = Json::array(), hidden = Json::array();
-            if (action == "first") order.push(id);
-            for (const auto& item : badges_["order"].items())
-                if (action != "first" || item.str() != id) order.push(item);
-            for (const auto& item : badges_["hidden"].items())
-                if (item.str() != id || action == "first") hidden.push(item);
-            if (action == "hide") hidden.push(id);
-            ui(J({{"type", "badges.display"}, {"order", order}, {"hidden", hidden}, {"requestToken", "cli-badges"}}));
-        }
-        return;
-    }
-    if (cmd == "/activity") {
-        std::string mode = args.empty() ? "daily" : args == "total" ? "cumulative" : args;
-        if (mode != "daily" && mode != "weekly" && mode != "cumulative") {
-            toast("用法：/activity daily、/activity weekly 或 /activity total", "error");
-            return;
-        }
-        const Json& activity = usage_["activity"];
-        const auto& days = activity["days"].items();
-        note("Token 活動 · 已保存紀錄累計 " + tui::tokens(activity["total"].i64()), C::kBrand);
-        long long peak = 1;
-        size_t begin = days.size() > 14 ? days.size() - 14 : 0;
-        for (size_t i = begin; i < days.size(); ++i) peak = std::max(peak, (long long)days[i][mode].i64());
-        std::vector<Line> out;
-        for (size_t i = begin; i < days.size(); ++i) {
-            const Json& day = days[i];
-            long long value = day[mode].i64();
-            int blocks = value > 0 ? std::max(1, int(double(value) / peak * 20)) : 0;
-            std::string bar;
-            for (int j = 0; j < blocks; ++j) bar += "▪";
-            out.push_back({{tui::muted(), "  " + day["date"].str() + "  "},
-                           {tui::fg(C::kBrandDeep), bar},
-                           {Style(), std::string(22 - blocks, ' ') + tui::tokens(value)},
-                           {tui::muted(), mode == "daily" && !day["recorded"].boolean() ? " · 尚無當日紀錄" : ""}});
-        }
-        commit(out);
-        note(mode == "daily"    ? "每日輸入與輸出用量"
-             : mode == "weekly" ? "截至該日期的近 7 日用量"
-                                : "已保存紀錄截至該日期的累計用量");
-        note("終端機顯示最近 14 個日期；桌面日曆顯示近一年。日期依記錄時的主機時區。");
         return;
     }
     if (cmd == "/flow") {
@@ -3167,27 +2982,6 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
             return;
         }
         toast("還沒有回覆可以顯示");
-        return;
-    }
-    if (cmd == "/name") {
-        pickAgent(
-            "要改誰的名稱？",
-            [this](const std::string& who) {
-                Ask a;
-                a.title = "新的名稱（" + name(who) + "）";
-                a.placeholder = "留空恢復預設名稱";
-                a.allowEmpty = true;
-                a.done = [this, who](const std::string& n) {
-                    ui(J({{"type", "profile.set"}, {"who", who}, {"name", n}}));
-                    toast("名稱改為 " + name(who), "ok");
-                };
-                ask(std::move(a), name(who));
-            },
-            true, true, true);
-        return;
-    }
-    if (cmd == "/persona" || cmd == "/settings") {
-        pickAgent("要設定誰的性格？", [this](const std::string& who) { pickPersona(who); }, true, false, true);
         return;
     }
     if (cmd == "/humanize") {

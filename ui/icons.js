@@ -1,7 +1,7 @@
 // Line icons drawn for CCA on a 24px grid. Stroke icons inherit currentColor.
 const ICONS = {
-  // The 1.0 handoff mark is generated from tools/make_logo.py.
-  logo: '<g transform="scale(.75)"><g fill="currentColor" stroke="none"><path d="M20 3L8 3L3 8L3 16L8 21L20 21L20 16L10 16L8 14L8 10L10 8L20 8Z"/><path d="M12 29L24 29L29 24L29 16L24 11L12 11L12 16L22 16L24 18L24 22L22 24L12 24Z"/></g></g>',
+  // The handoff mark is generated from tools/make_logo.py.
+  logo: '<g transform="scale(.75)"><path d="M13.059 24.081A8.6 8.6 0 0 1 13.059 7.919" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round"/><path d="M18.941 7.919A8.6 8.6 0 0 1 18.941 24.081" fill="none" style="stroke:var(--signal)" stroke-width="4.6" stroke-linecap="round"/></g>',
   puzzle: '<path d="M10 4.5a2 2 0 1 1 4 0V6h3.5A1.5 1.5 0 0 1 19 7.5V11h-1.5a2 2 0 1 0 0 4H19v3.5a1.5 1.5 0 0 1-1.5 1.5H14v-1.5a2 2 0 1 0-4 0V20H6.5A1.5 1.5 0 0 1 5 18.5V15h1.5a2 2 0 1 0 0-4H5V7.5A1.5 1.5 0 0 1 6.5 6H10z"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',

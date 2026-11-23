@@ -33,7 +33,7 @@ def catalogue():
                            "brand-soft": f"rgba({rgb(p['brand'])}, .08)",
                            "scroll-thumb": p["line"], "gray-btn": p["selected"],
                            "gray-btn-hover": p["hover"], "dot-grid": "transparent",
-                           "badge-ink": p["text"], "commander": p["signal"]})
+                           "commander": p["signal"]})
             # Signature colors and system font stacks; the CSS only reads them through these tokens.
             for index, accent in enumerate(p.get("accents", [])[:6], 1):
                 tokens["theme-a" + str(index)] = accent
@@ -43,18 +43,16 @@ def catalogue():
             if p.get("ink"):
                 tokens["brand-ink"] = p["ink"]
             if light:
-                tokens.update({"gemini": "#245db1", "gemini-name": "#245db1", "gemini-rgb": "36, 93, 177"})
+                tokens.update({"gemini": "#6b4fc8", "gemini-name": "#6b4fc8", "gemini-rgb": "107, 79, 200"})
                 tokens.update({"claude": "#99482f", "claude-name": "#99482f", "codex": "#146948",
                                "codex-name": "#146948", "local1": "#ad3975", "local1-name": "#9a2864",
-                               "local2": "#7258a7", "local2-name": "#64439b", "green": "#277743",
+                               "local2": "#8a5a14", "local2-name": "#7a4e0f", "green": "#277743",
                                "red": "#b73541", "yellow": "#89601b", "success-text": "#246b38",
                                "danger-text": "#a62633", "diff-add-text": "#226734",
                                "diff-remove-text": "#a62633", "yellow-rgb": "137, 96, 27",
                                "green-rgb": "39, 119, 67", "red-rgb": "183, 53, 65",
                                "claude-rgb": "153, 72, 47", "codex-rgb": "20, 105, 72",
-                               "local1-rgb": "173, 57, 117", "local2-rgb": "114, 88, 167",
-                               "badge-copper": "#8d6033", "badge-teal": "#286c65",
-                               "badge-steel": "#506a82", "badge-blue": "#38648a"})
+                               "local1-rgb": "173, 57, 117", "local2-rgb": "138, 90, 20"})
         theme["tokens"] = tokens
     return source
 

@@ -29,7 +29,7 @@
 
 | 版本 | 圖標 | 狀態 | 授權 | 倉庫 |
 | --- | --- | --- | --- | --- |
-| 普通版本 CCA | <img src="assets/logo/cca-app-64.png" width="40" alt="CCA"> | 1.0.2-oss | 開源（GPL-3.0） | 這個倉庫 |
+| 普通版本 CCA | <img src="assets/logo/cca-app-64.png" width="40" alt="CCA"> | 1.0.2-luna | 開源（GPL-3.0） | 這個倉庫 |
 | 俳句 Haiku | <img src="assets/editions/haiku/icon-64.png" width="40" alt="Haiku"> | 0.0.2，Android | 開源（GPL-3.0） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special/tree/haiku) 的 `haiku` 分支 |
 | 十四行詩 Sonnet | <img src="assets/editions/sonnet/icon-64.png" width="40" alt="Sonnet"> | 開發與規劃中 | 開源（GPL-3.0） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special/tree/sonnet) 的 `sonnet` 分支 |
 | 大師巨作 Opus | <img src="assets/editions/opus/icon-64.png" width="40" alt="Opus"> | 開發與規劃中 | 開源（GPL-3.0） | [ChatClaudeAgent-Special](https://github.com/keeiv/ChatClaudeAgent-Special/tree/opus) 的 `opus` 分支 |
@@ -46,7 +46,7 @@ CCA 起於作者使用 OpenAI 為 Claude Code 開發的 Codex 插件時，對雙
 - **交接有依據**：帶入實際檔案變更、指令狀態、需求修正與待辦，保留上下文截斷的提示。
 - **審查可核對**：不同模型交叉檢查；主機記錄測試結果、來源指紋與計畫版本，讓完成聲明有可查的依據。
 - **操作有界線**：權限、計畫核准、變更檢視、隔離工作區與回滾由使用者選擇，不能由模型的說法代替授權。
-- **模型與表達可替換**：沿用已有的 CLI 登入、本機專案與另行設定的 API；性格是可選的本機資料，不綁定角色，也不改變技術規範。
+- **後端可替換**：沿用已有的 CLI 登入、本機專案與另行設定的 API；換後端不改變工作規範、工具權限與驗收依據。
 
 不同模型達成一致或測試通過，仍不能保證不存在錯誤。CCA 保存可檢查的過程與結果，具體目標、已完成能力及界線見 [開發目的](docs/purpose.md)。
 
@@ -66,12 +66,10 @@ CCA 起於作者使用 OpenAI 為 Claude Code 開發的 Codex 插件時，對雙
 
 - **私人訊息**：分別和 Claude、GPT 一對一對話。
 - **協作群組**：可選 Claude 或 GPT 主刀，另一位負責審查與修改，再由主刀複審。到達輪數上限（預設 6 輪）會先停下來問你。
-- **群組導覽**：每個協作群組在最左側有獨立圖標，選取後顯示群組的對話與工具入口。私訊保留在首頁；群組可拖曳、用選單或鍵盤調整固定順序，CLI 使用 `/groups`。[操作說明](docs/group-navigation.md)。
+- **對話列表**：群組與私訊在同一個左欄。開啟中的群組在列表裡展開審查變更、版本控制、任務控制、交付驗證與群組設定；群組可拖曳、用選單或鍵盤調整順序，CLI 使用 `/groups`。[操作說明](docs/group-navigation.md)。
 - **用你自己的訂閱**：透過官方 Claude Code 和 Codex CLI 執行；登入可用的 Claude 訂閱或 ChatGPT 訂閱即可使用對應模型。GPT 主導時，Claude 無法參與也能獨立完成。
 - **額度接手**：預設啟用 Claude 額度耗盡時由 GPT 接手。等 Claude 該輪停止後，附上原始需求、使用者修正、部分回覆、指令狀態、檔案變更與待辦，再繼續工作。一般網路錯誤與用量警告不會觸發。GPT 自查完成會明確標示 Claude 沒有參與審查。
 - **插件商店**：替 Claude 或 GPT 安裝插件，每個插件都標明是給哪個 AI 的；MCP 伺服器可以一次裝給兩個。
-- **自訂工作風格**：可自行設定代理的名稱與回覆方式；技術品質、權限與協作格式優先於個人設定。
-- **個人資料**：桌面版可自訂群組、自己和 AI 的頭像，先裁切再儲存；點成員可看模型發布日期與依性格顯示的自介。新頭像存成靜態 PNG，橫幅保留 GIF 支援；CLI 只設定名稱與角色性格。操作與日期來源見 [頭像與資料卡](docs/profiles.md)。
 - **日常模式**：在私訊標題列打開，改用最省額度的模型（Claude 用 Haiku、GPT 用 luna 系列）和最低思考程度聊天，不需要專案資料夾，改檔案或執行指令前會先問你。
 - **回滾**：在任一則訊息的選單按「回滾」，可以分別選「回滾工作」（把專案檔案還原到那則訊息之前）和「回滾聊天」（刪除之後的訊息，Claude 和 GPT 也會忘記那之後的內容）。還原前會先存一個檢查點，按「復原檔案」可以回來。
 - **本地審查員（最多兩個）**：用 Ollama 在你的電腦上跑模型，邀請進群組後只做唯讀審查。它們用三個唯讀工具（讀檔、列資料夾、搜尋，只限專案資料夾）自己讀檔，每條建議都要附「檔案:行號」和逐字原文；CCA 拿原文去比對檔案，對不上的建議直接刪掉，只有對得上的才轉交 Claude 和 GPT，而他們採納前仍要自己取證。本地模型不能改檔案、不能執行指令，也沒有私訊。不支援工具呼叫的模型不能當審查員。在 設定 › 本地模型 會依你的顯示卡和記憶體推薦模型，可以直接下載、刪除、指定給兩個位置。
@@ -80,8 +78,6 @@ CCA 起於作者使用 OpenAI 為 Claude Code 開發的 Codex 插件時，對雙
 - **審查草稿與保護**：可篩選變更檔案，以方向鍵切換；逐行意見和未完成文字會保存在本機。送出後等主機確認收到才清除；檔案在審查後又被修改時，還原會先擋下，避免覆蓋較新的內容。CLI 的 `/revert` 有相同保護。介面規則與驗證見 [視覺識別](docs/visual-identity.md)。
 - **頻道設定**：標題列只顯示一行摘要（主刀、權限、資料夾）；主刀、模型、額度用完時的接手、權限、資料夾、本地審查員、來回上限與流程圖都在頻道設定面板。
 - **規範審查**：每則 AI 回覆結束時，CCA 用程式（不是提示詞）檢查：說明是否為台灣繁體中文、有沒有用角色的稱呼、有沒有自稱 AI 而出戲、審查是否寫了 VERDICT、APPROVE 之前有沒有真的讀檔或跑指令、說「測試通過」的那一輪有沒有真的執行過指令、本地審查員的建議有沒有逐條查證。不符合就附上違規清單退回同一個 AI 重寫，最多兩次；仍不符合時，群組會暫停讓你選「再退回一次」或「接受並繼續」，私訊會把回覆標成「未通過規範」。每次交給 AI 的訊息開頭也會附上一張規則卡。
-- **Token 活動**：在「訂閱與用量」查看近一年的日曆熱力圖，可切換每日、截至當日的近 7 日或已保存紀錄累計；滑鼠、鍵盤及點選均可查看數值。保留最近 14 天的詳細長條與表格；API 及本地流程也納入。CLI 使用 `/activity daily|weekly|total`。[統計範圍](docs/activity.md)。
-- **個人徽章**：七款身分與版本紀念圖形，所有安裝內建成員徽章。個人資料展示六枚，可從目錄查看完整收藏、自行排序與隱藏；CLI 使用 `/badges`。本機授予不提供工具權限或線上認證。[操作與資料範圍](docs/badges.md)。
 - **多個群組**：每個群組可以指定不同的專案資料夾。
 - **思考程度**：每個對話可以選模型加思考程度，例如「Opus 5.5 Ultracode」「GPT-6.1-Sol Max」。Claude 有 Low／Medium／High／XHigh／Max／Ultracode（動態工作流程，會分派子代理），GPT 有 Low 到 Max 和 Ultra。
 
@@ -110,7 +106,7 @@ build\ChatClaudeAgent.exe
 - `/lead gpt`、`/lead claude` 選主刀；切換會帶入近期工作上下文。工作進行中使用 `/takeover`，先停止 Claude，再讓 GPT 接續。
 - `/fallback on`、`/fallback off` 控制自動接手。額度耗盡後維持 GPT 主導；額度恢復後可用 `/lead claude` 明確重試。
 - `/show` 查看上一則回覆的完整指令輸出與 diff，`/model`、`/effort` 設模型與思考程度，`/permission` 選權限。
-- `/name` 改名稱，`/persona` 選用或建立性格，`/humanize on` 開啟去 AI 化規則。
+- `/humanize on` 開啟去 AI 化規則，`/theme cca-light` 換成亮色。
 - `/flow` 控制協作流程圖，`/motion off` 關閉動態。思考會轉圈，撰寫會呼吸亮起，送審時圓點沿線移動；已邀請的本地成員也顯示在圖上。桌面版有相同流程圖與收合控制，詳見 [協作流程與調查](docs/workflow.md)。
 - 權限請求使用方向鍵或數字選擇，Enter 確認、Esc 拒絕；Shift+Enter 換行，Esc 中斷，連按兩次 Ctrl+C 離開。
 
@@ -199,7 +195,7 @@ build\live.exe codex
 build\live.exe group --fake-claude
 ```
 
-`build\live.exe persona --fake-claude` 會檢查性格、日常模式和最省模型有沒有正確傳給 Claude Code（`tests/fake_claude.js` 是模擬的 Claude CLI，不需要登入）。
+`build\live.exe daily --fake-claude` 會檢查日常模式和最省模型有沒有正確傳給 Claude Code（`tests/fake_claude.js` 是模擬的 Claude CLI，不需要登入）。
 
 `build.bat pty` 建置 CLI 測試器，接著執行 `build.bat takeover-test`、`python tests/cli_smoke.py`，可用模擬後端驗證終端機輸入、權限決定、設定、縮放與群組交棒，不使用訂閱額度。
 
@@ -218,7 +214,7 @@ node tools\serve_ui.js
 ## 架構
 
 ```
-ui/            介面（HTML/CSS/JS，無外部套件），Discord 深色主題
+ui/            介面（HTML/CSS/JS，無外部套件）：對話列表、對話、檢視面板三欄
 src/main.cpp   Win32 無邊框視窗 + WebView2，介面從 exe 資源讀取
 src/cli_main.cpp 終端機介面、輸入編輯、指令與權限選單
 src/cli_render.* 中文欄寬、Markdown、訊息與點陣標誌
@@ -229,8 +225,7 @@ src/claude_agent.*  驅動 `claude -p --input-format/--output-format stream-json
 src/codex_agent.*   驅動 `codex app-server`（JSON-RPC）
 src/auth.cpp   找 CLI、檢查訂閱方案、登入
 src/plugins.cpp  插件與 MCP 伺服器
-src/personas.* 自訂工作風格與額外指令
-src/profile.cpp  名稱／頭像／橫幅、性格指派、日常模式的模型選擇
+src/profile.cpp  成員名稱、設定預設值、日常模式的模型選擇
 src/snapshot.* 檢查點（獨立的 git 倉庫）
 src/rollback.cpp 回滾聊天／工作、復原
 src/hardware.* 偵測 GPU／記憶體、推薦本地模型
@@ -253,7 +248,7 @@ src/process.*  子程序（管線、Job 物件，關閉 CCA 時整棵程序樹�
 
 ## 參與貢獻
 
-建置、測試與提交方式見 [貢獻指南](CONTRIBUTING.md)。每個拉取請求都要通過 [CI](.github/workflows/ci.yml)：倉庫衛生、風格、兩個 Windows 映像檔上的建置與原生測試、假後端與真實 ConPTY 的模擬測試、真實 Edge 的介面測試、AddressSanitizer 記憶體測試、極端環境測試與 CodeQL（內容與限制見 [docs/ci.md](docs/ci.md)）。安全問題請依 [安全政策](SECURITY.md) 私下回報。
+建置、測試與提交方式見 [貢獻指南](CONTRIBUTING.md)。每個拉取請求都要通過 [CI](.github/workflows/ci.yml)：倉庫衛生、風格、兩個 Windows 映像檔上的建置與原生測試、假後端與真實 ConPTY 的模擬測試、真實 Edge 的介面測試、AddressSanitizer 記憶體測試、極端環境測試與 CodeQL（內容與限制見 [docs/ci.md](docs/ci.md)）。main 受分支保護：只能經拉取請求合併，必要檢查是「CI 全部通過」。擁有者的拉取請求在 CI 綠燈後自動以 squash 合併並刪除分支；`src/version.hpp` 的版本號改變後，[CD](.github/workflows/cd.yml) 會建置、測試並發行 GitHub Release（附 SHA-256 與建置來源證明）。安全問題請依 [安全政策](SECURITY.md) 私下回報。
 
 ## 授權
 

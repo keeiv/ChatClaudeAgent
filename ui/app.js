@@ -83,17 +83,16 @@
 
   // ================================================================ constants
   const AGENTS = {
-    gemini: { name: 'Gemini', letter: 'G', vendor: 'Google', cli: 'Gemini CLI', role: '審查者', color: 'var(--gemini)',
+    gemini: { name: 'Gemini', letter: 'G', mark: 'Ge', vendor: 'Google', cli: 'Gemini CLI', role: '審查者', color: 'var(--gemini)',
       upgrade: 'https://geminicli.com/plans/', notice: 'https://geminicli.com/docs/resources/quota-and-pricing/',
       install: 'npm install -g @google/gemini-cli', installNote: '需要先安裝 Node.js，然後執行：' },
-    claude: { name: 'Claude', letter: 'C', vendor: 'Anthropic', cli: 'Claude Code', role: '撰寫者', color: 'var(--claude)',
+    claude: { name: 'Claude', letter: 'C', mark: 'C', vendor: 'Anthropic', cli: 'Claude Code', role: '撰寫者', color: 'var(--claude)',
       upgrade: 'https://claude.ai/upgrade', install: 'irm https://claude.ai/install.ps1 | iex', installNote: '在 PowerShell 執行（官方安裝程式）：' },
-    codex: { name: 'GPT', letter: 'G', vendor: 'OpenAI', cli: 'Codex', role: '審查者', color: 'var(--codex)',
+    codex: { name: 'GPT', letter: 'G', mark: 'G', vendor: 'OpenAI', cli: 'Codex', role: '審查者', color: 'var(--codex)',
       upgrade: 'https://chatgpt.com/#pricing', install: 'npm install -g @openai/codex', installNote: '需要先安裝 Node.js，然後執行：' },
-    local1: { name: '本地模型 1', letter: 'L', vendor: '本機', cli: 'Ollama', role: '唯讀審查員', color: 'var(--local1)' },
-    local2: { name: '本地模型 2', letter: 'L', vendor: '本機', cli: 'Ollama', role: '唯讀審查員', color: 'var(--local2)' },
+    local1: { name: '本地模型 1', letter: 'L', mark: '1', vendor: '本機', cli: 'Ollama', role: '唯讀審查員', color: 'var(--local1)' },
+    local2: { name: '本地模型 2', letter: 'L', mark: '2', vendor: '本機', cli: 'Ollama', role: '唯讀審查員', color: 'var(--local2)' },
   };
-  const PROFILE_AGENTS = ['claude', 'codex', 'gemini', 'local1', 'local2'];
   const isLocalAgent = (a) => a === 'local1' || a === 'local2';
   const PERMS = {
     plan: { label: '規劃模式', icon: 'eye', desc: '只閱讀和分析，不修改檔案，先提出計畫給你核准。',
@@ -161,10 +160,7 @@
     view: 'chat',
     current: null,
     models: { claude: [], codex: [], gemini: [] },
-    modelDates: [],
-    modelDateAliases: {},
-    crop: null,
-    groupEditor: null,
+    panelTab: store.get('panelTab', ''),
     usage: { claude: {}, codex: {}, gemini: {} },
     settings: {},
     plugins: { claude: null, codex: null },
@@ -183,11 +179,9 @@
     drafts: {},
     pending: {},
     version: '',
-    personas: [],
     local: null,
     pulls: {},
     usageTable: false,
-    activityMode: 'daily',
   };
 
   // ================================================================ bridge
@@ -211,31 +205,12 @@
     return new Promise((resolve) => { waiters[reqId] = resolve; send({ ...msg, reqId }); });
   }
 
-  // ---- profiles: names, avatars and banners shared by all native participants
-  const prof = (who) => ((S.settings && S.settings.profiles) || {})[who] || {};
+  // ---- participant names: fixed per backend, the user goes by the Windows account name
   function displayName(who) {
-    const n = (prof(who).name || '').trim();
-    if (n) return n;
     if (who === 'user') return S.user.name;
-    if (isLocalAgent(who) && personaOf(who)) return personaOf(who).name;
     return AGENTS[who] ? AGENTS[who].name : who;
   }
   const convTitle = (c) => (c.kind === 'group' ? c.name : displayName(c.kind));
-  function mediaUrl(file) {
-    if (!file) return '';
-    if (/^(data:image\/|https?:)/.test(file)) return file;
-    return 'https://media.cca.app/' + encodeURIComponent(file);
-  }
-  const defaultBanner = (who) => (window.CCAThemeCatalog?.find(t => t.id === (S.settings.theme || 'cca'))?.tokens || {})[who] || '#5865f2';
-  function bannerStyle(who) {
-    const p = prof(who);
-    if (p.banner) return { backgroundImage: `url("${mediaUrl(p.banner)}")`, backgroundSize: 'cover', backgroundPosition: 'center' };
-    return { background: p.bannerColor || defaultBanner(who) };
-  }
-  const personaOf = (agent) => {
-    const id = ((S.settings && S.settings.persona) || {})[agent] || 'none';
-    return S.personas.find((p) => p.id === id) || null;
-  };
 
   const conv = (id = S.current) => S.convs.find((c) => c.id === id);
   const stateOf = (id = S.current) => S.states[id] || { typing: [], group: {} };
@@ -298,12 +273,8 @@
         S.groupOrder = m.groupOrder || [];
         S.settings = m.settings || {};
         S.lastDm = S.settings.lastDm || '';
-        window.CCABadges?.update(m.badges);
-        S.personas = m.personas || [];
         S.models = m.models || S.models;
         window.CCAPlatform?.refreshModels();
-        S.modelDates = m.modelDates || [];
-        S.modelDateAliases = m.modelDateAliases || {};
         S.usage = m.usage || S.usage;
         for (const st of m.states || []) S.states[st.id] = st;
         const last = S.settings.lastConv;
@@ -318,7 +289,6 @@
       case 'convs':
         S.convs = m.items || [];
         S.groupOrder = m.groupOrder || S.groupOrder;
-        S.groupEditor?.refresh();
         if (!conv()) openHome();
         schedule();
         break;
@@ -375,16 +345,6 @@
         window.CCAPlatform?.refreshModels();
         schedule();
         break;
-      case 'image.crop':
-        cropDialog(m);
-        break;
-      case 'image.result':
-        if (S.crop && S.crop.token === m.token) {
-          S.crop.saving = false;
-          if (m.ok) { S.crop.saved = true; S.crop.close(); }
-          else { S.crop.error.textContent = m.error || '無法儲存頭像'; S.crop.save.disabled = false; S.crop.cancel.disabled = false; }
-        }
-        break;
       case 'local':
         S.local = m;
         window.CCAPlatform?.refreshModels();
@@ -400,18 +360,12 @@
         if (settingsUi.open) renderSettings();
         break;
       case 'settings':
-        // Names, avatars or personas changed: everything that shows them is redrawn.
         S.settings = m.settings || S.settings;
         S.groupOrder = m.groupOrder || S.groupOrder;
-        window.CCABadges?.update(m.badges);
-        S.personas = m.personas || S.personas;
         S.humanizeRules = m.humanizeRules || S.humanizeRules;
         if (S.view === 'chat' && chat.list) rerenderCurrent();
         if (settingsUi.open) renderSettings();
         schedule();
-        break;
-      case 'badges.result':
-        window.CCABadges?.result(m);
         break;
       case 'quality.state':
         S.quality[m.id] = m;
@@ -521,7 +475,6 @@
   }
   function renderAll(light) {
     renderTitlebar();
-    renderRail();
     renderSidebar();
     renderUserbar();
     renderMain(light);
@@ -533,22 +486,23 @@
   function renderTitlebar() {
     const tb = $('#titlebar');
     const c = conv();
-    let title = 'ChatClaudeAgent', ic = 'logo';
-    if (S.view === 'plugins') { title = '插件商店'; ic = 'puzzle'; }
-    else if (S.view === 'account') { title = '訂閱與用量'; ic = 'chart'; }
-    else if (c) { title = c.kind === 'group' ? convTitle(c) : '私人訊息'; ic = c.kind === 'group' ? 'users' : 'at'; }
+    let title = '';
+    if (S.view === 'plugins') title = '插件商店';
+    else if (S.view === 'account') title = '訂閱與用量';
+    else if (S.view === 'inbox') title = '收件匣';
+    else if (c) title = convTitle(c);
     const pend = totalPending();
     put(tb,
-      h('div', { class: 'tb-left' }, icon('logo', 18), 'ChatClaudeAgent',
-        special() ? h('span', { class: 'edition-mark', 'data-tip': '為了您最艱難的任務而存在' }, S.edition.name) : null),
-      h('div', { class: 'tb-title' }, icon(ic, 16), title),
+      h('div', { class: 'tb-left' }, icon('logo', 16), h('span', { class: 'tb-word' }, 'CCA'),
+        special() ? h('span', { class: 'edition-mark', 'data-tip': '為了您最艱難的任務而存在' }, S.edition.name) : null,
+        title ? h('span', { class: 'tb-title' }, title) : null),
       h('div', { class: 'tb-right' },
         h('button', { class: 'tb-icon', 'aria-label': '收件匣', 'data-tip': pend ? `${pend} 個請求等你處理` : '收件匣', onclick: () => openView('inbox') },
-          icon('inbox', 18), pend ? h('span', { class: 'badge' }, pend) : null),
-        h('button', { class: 'tb-icon', 'data-tip': '說明', onclick: showHelp }, icon('help', 18)),
-        h('button', { class: 'win-btn', 'aria-label': '最小化', onclick: () => send({ type: 'win', action: 'min' }) }, icon('min', 16)),
-        h('button', { class: 'win-btn', 'aria-label': '最大化', onclick: () => send({ type: 'win', action: 'max' }) }, icon(S.winMax ? 'restore' : 'max', 16)),
-        h('button', { class: 'win-btn close', 'aria-label': '關閉', onclick: () => send({ type: 'win', action: 'close' }) }, icon('close', 16)),
+          icon('inbox', 16), pend ? h('span', { class: 'badge' }, pend) : null),
+        h('button', { class: 'tb-icon', 'aria-label': '說明', 'data-tip': '說明', onclick: showHelp }, icon('help', 16)),
+        h('button', { class: 'win-btn', 'aria-label': '最小化', onclick: () => send({ type: 'win', action: 'min' }) }, icon('min', 14)),
+        h('button', { class: 'win-btn', 'aria-label': '最大化', onclick: () => send({ type: 'win', action: 'max' }) }, icon(S.winMax ? 'restore' : 'max', 14)),
+        h('button', { class: 'win-btn close', 'aria-label': '關閉', onclick: () => send({ type: 'win', action: 'close' }) }, icon('close', 14)),
       ),
     );
   }
@@ -575,7 +529,8 @@
     toast('info', '目前沒有需要你處理的請求');
   }
 
-  // ================================================================ rail
+  // ================================================================ group order
+  // The host owns the order (groups.reorder, saved before it is confirmed); activity never reorders groups.
   const activeGroup = () => S.view === 'chat' && conv()?.kind === 'group' ? conv() : null;
   function orderedGroups() {
     const remaining = new Map(S.convs.filter(c => c.kind === 'group').map(c => [c.id, c]));
@@ -605,7 +560,7 @@
       onclick: () => { closePop(); run(); } }, text);
     popover(anchor, [h('div', { class: 'pop-title' }, c.name),
       action('開啟協作對話', () => openConv(c.id)),
-      action('編輯群組資料', () => renameDialog(c)),
+      action('重新命名', () => renameDialog(c)),
       action('群組設定', () => opsPanel(anchor, c)),
       h('div', { class: 'group-menu-separator' }),
       action('向上移動', () => moveGroup(c.id, -1), !!S.railReorder || index <= 0),
@@ -614,7 +569,8 @@
       action('建立協作群組', createGroupDialog),
       action('清除或刪除群組', () => clearDialog(c), false, true)], 'group-menu');
   }
-  function railKey(event, id) {
+  // Keyboard on a sidebar row: arrows move between rows, Alt+arrows move a group, Shift+F10 opens its menu.
+  function rowKey(event, id) {
     if (id && event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
       event.preventDefault();
       moveGroup(id, event.key === 'ArrowUp' ? -1 : 1);
@@ -624,18 +580,69 @@
       event.preventDefault(); groupMenu(event.currentTarget, conv(id)); return;
     }
     if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
-    const buttons = [...$('#rail').querySelectorAll('.rail-btn')], index = buttons.indexOf(event.currentTarget);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 :
-      Math.max(0, Math.min(buttons.length - 1, index + (event.key === 'ArrowUp' ? -1 : 1)));
-    event.preventDefault(); buttons[next]?.focus(); buttons[next]?.scrollIntoView({ block: 'nearest' });
+    const rows = [...$('#sidebar').querySelectorAll('[data-nav-id]')], index = rows.indexOf(event.currentTarget);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 :
+      Math.max(0, Math.min(rows.length - 1, index + (event.key === 'ArrowUp' ? -1 : 1)));
+    event.preventDefault(); rows[next]?.focus(); rows[next]?.scrollIntoView({ block: 'nearest' });
   }
-  function groupRailButton(c) {
-    const picture = c.avatar ? h('img', { src: mediaUrl(c.avatar), alt: '', draggable: 'false' }) :
-      h('span', {}, Array.from(c.name.trim() || '群組').slice(0, 2).join(''));
-    return h('button', { class: 'rail-btn rail-group', type: 'button', 'data-nav-id': 'group:' + c.id,
-      'data-group-id': c.id, 'aria-label': c.name, 'aria-current': activeGroup()?.id === c.id ? 'page' : null,
+
+  // ================================================================ sidebar
+  // Member marks are drawn, not uploaded: each agent is a flat droplet in its identity colour, leaning with its tip to
+  // the upper left, with two small upright eyes; the user is a chubby star in the same style. The body takes
+  // `currentColor`, the corners are softened by a stroke in the same colour. All markup here is static.
+  const AVATAR_DROP = 'M17.2 7.6Q20 3.8 22.8 7.6C25.6 11.2 32.2 17 32.2 24.5A12.2 12.2 0 0 1 7.8 24.5C7.8 17 14.4 11.2 17.2 7.6Z';
+  const AVATAR_STAR = (() => {
+    const points = [];
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 ? 8.6 : 15.2, a = -Math.PI / 2 + i * Math.PI / 5;
+      points.push((20 + r * Math.cos(a)).toFixed(2) + ' ' + (21.2 + r * Math.sin(a)).toFixed(2));
+    }
+    return 'M' + points.join('L') + 'Z';
+  })();
+  const AVATAR_SVG = {};
+  function avatarSvg(shape) {
+    if (AVATAR_SVG[shape]) return AVATAR_SVG[shape];
+    const star = shape === 'star';
+    const body = star ? `<path d="${AVATAR_STAR}" transform="rotate(-10 20 21.2)" fill="currentColor" stroke="currentColor" stroke-width="4.6" stroke-linejoin="round"/>`
+      : `<path d="${AVATAR_DROP}" transform="rotate(-26 20 22)" fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>`;
+    // Eyes sit above and to the right of the body's centre, leaning a little with the body.
+    const e = star ? { y: 19.4, l: 19.3, r: 24.3, w: 2.1, h: 4 } : { y: 19, l: 21.2, r: 26.8, w: 2.3, h: 4.6 };
+    const eye = x => `<rect x="${(x - e.w / 2).toFixed(2)}" y="${(e.y - e.h / 2).toFixed(2)}" width="${e.w}" height="${e.h}" rx="${e.w / 2}"` +
+      ` transform="rotate(-8 ${x} ${e.y})" class="av-eye"/>`;
+    return (AVATAR_SVG[shape] = `<svg viewBox="0 0 40 40" aria-hidden="true" focusable="false">${body}${eye(e.l)}${eye(e.r)}</svg>`);
+  }
+  function avatar(kind, size = 32, status) {
+    const el = h('div', { class: `avatar ${kind}`, style: { width: size + 'px', height: size + 'px' } });
+    if (kind === 'system') el.append(icon('logo', Math.round(size * 0.62)));
+    else el.innerHTML = avatarSvg(kind === 'user' ? 'star' : 'drop');
+    if (status) el.append(h('div', { class: `status ${status}` }));
+    return el;
+  }
+  function agentStatus(agent, convId) {
+    const a = S.auth[agent] || {};
+    if (a.state !== 'ok') return a.state === 'checking' || a.state === 'loggingIn' ? 'wait' : 'bad';
+    if (convId && (stateOf(convId).typing || []).includes(agent)) return 'busy';
+    return 'ok';
+  }
+  function groupAvatar(c, size = 32) {
+    const backends = c.pipeline?.nodes?.length ? [...new Set(c.pipeline.nodes.map(n => n.backend))] : ['claude', 'codex'];
+    return h('div', { class: 'group-avatar', style: { width: size + 'px', height: size + 'px' } },
+      h('span', { class: 'group-mark' }, Array.from(c.name.trim() || '群組').slice(0, 1).join('')),
+      h('span', { class: 'group-dots' }, backends.slice(0, 3).map(a => h('i', { class: a }))));
+  }
+
+  function groupSub(c) {
+    const g = stateOf(c.id).group || {};
+    if (g.active && g.paused) return '等你決定下一步';
+    if (g.active) return `第 ${g.round || 0} 輪 · ${displayName(g.current || c.lead || 'claude')}${PHASES[g.phase] ? PHASES[g.phase] + '中' : '工作中'}`;
+    return c.cwd ? baseName(c.cwd) : '尚未選擇資料夾';
+  }
+  function groupRow(c, selected) {
+    const pend = pendingCount(c.id);
+    const row = h('button', { class: `dm group-row${selected ? ' active' : ''}${S.unread[c.id] ? ' unread' : ''}`, type: 'button',
+      'data-nav-id': 'group:' + c.id, 'data-group-id': c.id, 'aria-current': selected ? 'page' : null,
       'aria-description': 'Alt 加上／下方向鍵調整位置；Shift 加 F10 開啟選項。', draggable: S.railReorder ? 'false' : 'true',
-      onclick: () => openConv(c.id), onkeydown: event => railKey(event, c.id),
+      onclick: () => openConv(c.id), onkeydown: event => rowKey(event, c.id),
       oncontextmenu: event => { event.preventDefault(); groupMenu(event.currentTarget, c); },
       ondragstart: event => {
         if (S.railReorder) { event.preventDefault(); return; }
@@ -647,11 +654,11 @@
       ondragover: event => {
         if (!S.railDrag || S.railDrag === c.id || S.railReorder) return;
         event.preventDefault(); event.dataTransfer.dropEffect = 'move';
-        const before = event.clientY < event.currentTarget.getBoundingClientRect().top + 24;
-        event.currentTarget.closest('.rail-item').classList.toggle('drop-before', before);
-        event.currentTarget.closest('.rail-item').classList.toggle('drop-after', !before);
+        const r = event.currentTarget.getBoundingClientRect(), before = event.clientY < r.top + r.height / 2;
+        event.currentTarget.classList.toggle('drop-before', before);
+        event.currentTarget.classList.toggle('drop-after', !before);
       },
-      ondragleave: event => event.currentTarget.closest('.rail-item').classList.remove('drop-before', 'drop-after'),
+      ondragleave: event => event.currentTarget.classList.remove('drop-before', 'drop-after'),
       ondrop: event => {
         if (!S.railDrag || event.dataTransfer.getData('application/x-cca-group') !== S.railDrag) return;
         event.preventDefault(); event.stopPropagation();
@@ -659,342 +666,94 @@
         S.railDrag = null;
         if (source !== c.id) {
           const order = orderedGroups().map(group => group.id).filter(id => id !== source);
-          const after = event.clientY >= event.currentTarget.getBoundingClientRect().top + 24;
+          const r = event.currentTarget.getBoundingClientRect(), after = event.clientY >= r.top + r.height / 2;
           order.splice(order.indexOf(c.id) + (after ? 1 : 0), 0, source);
           saveGroupOrder(order, source);
         }
         schedule();
       },
       ondragend: () => { S.railDrag = null; schedule(); },
-    }, picture);
-  }
-  function renderRail() {
-    const rail = $('#rail');
-    // Streaming redraws must not destroy the native element while a drag is in progress.
-    if (S.railDrag) return;
-    const scroll = rail.scrollTop, focus = S.railFocus || document.activeElement?.closest('#rail [data-nav-id]')?.dataset.navId;
-    const groups = orderedGroups(), selected = activeGroup();
-    const dms = S.convs.filter(c => c.kind !== 'group');
-    const pend = dms.reduce((count, c) => count + pendingCount(c.id), 0);
-    const item = (active, btn, tip, unread, count = 0) => h('div', {
-      class: `rail-item${active ? ' active' : ''}${unread ? ' unread' : ''}`, 'data-tip': tip, 'data-tip-side': 'right' },
-    h('div', { class: 'rail-pill' }), btn,
-    count ? h('span', { class: 'badge rail-pending', 'aria-label': count + ' 項待處理' }, count > 99 ? '99+' : count) : null);
-    put(rail,
-      item(!selected, h('button', { class: 'rail-btn', type: 'button', 'data-nav-id': 'home',
-        'aria-label': '私人訊息', 'aria-current': !selected ? 'page' : null, onclick: openHome, onkeydown: event => railKey(event) }, icon('logo', 28)),
-      '私人訊息', dms.some(c => S.unread[c.id]), pend),
-      h('div', { class: 'rail-sep' }),
-      groups.map(c => item(selected?.id === c.id, groupRailButton(c), c.name, !!S.unread[c.id], pendingCount(c.id))),
-      groups.length ? h('div', { class: 'rail-sep' }) : null,
-      item(false, h('button', { class: 'rail-btn rail-create', type: 'button', 'data-nav-id': 'new',
-        'aria-label': '建立協作群組', onclick: createGroupDialog, onkeydown: event => railKey(event) }, icon('plus', 24)), '建立協作群組'),
-    );
-    rail.scrollTop = scroll;
-    S.railFocus = '';
-    if (focus) rail.querySelector(`[data-nav-id="${CSS.escape(focus)}"]`)?.focus({ preventScroll: true });
-  }
-
-  // ================================================================ sidebar
-  function avatar(kind, size = 32, status) {
-    const p = kind === 'system' ? {} : prof(kind);
-    const letter = kind === 'system' ? '' : (Array.from(displayName(kind))[0] || '?').toUpperCase();
-    const style = { width: size + 'px', height: size + 'px', fontSize: Math.round(size * 0.42) + 'px' };
-    if (kind !== 'system' && p.bannerColor && !p.avatar) style.background = p.bannerColor;
-    const el = h('div', { class: `avatar ${kind}`, style },
-      kind === 'system' ? icon('logo', Math.round(size * 0.6))
-        : p.avatar ? h('img', { class: 'avatar-img', src: mediaUrl(p.avatar), alt: '', draggable: 'false' }) : letter);
-    if (status) el.append(h('div', { class: `status ${status}` }));
-    return el;
-  }
-  function agentStatus(agent, convId) {
-    const a = S.auth[agent] || {};
-    if (a.state !== 'ok') return a.state === 'checking' || a.state === 'loggingIn' ? 'wait' : 'bad';
-    if (convId && (stateOf(convId).typing || []).includes(agent)) return 'busy';
-    return 'ok';
-  }
-
-  function groupAvatar(c, size = 32) {
-    return c.avatar ? h('div', { class: 'avatar group', style: { width: size + 'px', height: size + 'px' } },
-      h('img', { class: 'avatar-img', src: mediaUrl(c.avatar), alt: '', draggable: 'false' }))
-      : h('div', { class: 'group-avatar', style: { width: size + 'px', height: size + 'px' } },
-        (c.pipeline?.nodes?.length ? [...new Set(c.pipeline.nodes.map(n => n.backend))].slice(0, 2) : ['claude', 'codex']).map(a => avatar(a, Math.round(size * 0.65))));
-  }
-
-  function currentProfileModel(who, c = conv()) {
-    if (isLocalAgent(who)) return (((S.settings.locals || {})[who] || {}).model || '');
-    if (!c) return '';
-    const pick = c.daily && c.kind !== 'group' ? dailyPick(who).model : c[who + 'Model'] || '';
-    const canonical = pick && pick !== 'default' && !S.modelDateAliases[pick];
-    if (canonical) return pick;
-    const reply = [...(S.msgs[c.id] || [])].reverse().find(m => m.author === who && m.resolvedModel &&
-      (m.model || 'default') === (pick || 'default'));
-    if (reply) return reply.resolvedModel;
-    if (pick && pick !== 'default') return pick;
-    const def = (S.models[who] || []).find(m => m.isDefault);
-    if (def && def.value && def.value !== 'default') return def.value;
-    const defaultEntry = (S.models[who] || []).find(m => m.value === 'default');
-    const description = ((defaultEntry?.displayName || '') + ' ' + (defaultEntry?.description || '')).replace(/\s/g, '').toLowerCase();
-    const known = S.modelDates.filter(e => description.includes(e.name.replace(/^Claude /, '').replace(/\s/g, '').toLowerCase()));
-    return known.length === 1 ? known[0].id : '';
-  }
-
-  function profileFacts(who, c = conv()) {
-    const persona = personaOf(who), model = currentProfileModel(who, c);
-    const info = window.CCAProfileMedia.modelInfo(model, S.modelDates, S.modelDateAliases);
-    const date = prof(who).joinedAt || info?.date || '';
-    const about = persona ? (persona.summary || '使用「' + persona.name + '」性格，尚未填寫自介。')
-      : isLocalAgent(who) ? '唯讀審查員，針對程式與變更提出建議。' : '協助撰寫、審查與執行專案工作。';
-    return { persona, model, info, date, about };
-  }
-
-  // Profiles work like Discord's: clicking a member or an avatar opens a popout next to it;
-  // the avatar, the name or "檢視完整個人資料" open the full profile.
-  function profileDialog(who, convId = S.current, anchor = null) {
-    if (!AGENTS[who] && who !== 'user') return;
-    if (anchor) profilePopout(who, anchor, convId); else profileFull(who, convId);
-  }
-
-  function userAbout() {
-    return PROFILE_AGENTS.map((a) => (personaOf(a) && personaOf(a).address ? displayName(a) + ' 叫你「' + personaOf(a).address + '」' : null))
-      .filter(Boolean).join('，') || '直接叫你的名字';
-  }
-
-  function profileHandle(who) {
-    if (who === 'user') return '你';
-    const persona = personaOf(who);
-    return (persona ? persona.name + ' · ' : '') + AGENTS[who].vendor + ' ' + AGENTS[who].cli;
-  }
-
-  function profileRoles(who, c) {
-    if (who === 'user') return [{ name: c && c.kind === 'group' ? '下指令' : '使用者', color: 'var(--brand)' }];
-    if (isLocalAgent(who)) return [{ name: '唯讀審查員', color: AGENTS[who].color }];
-    if (c?.pipeline?.nodes?.some(n => n.backend === who)) return [...new Set(c.pipeline.nodes.filter(n => n.backend === who).map(n => PHASES[n.role] || n.role))].map(name => ({ name, color: AGENTS[who].color }));
-    if (c && c.kind === 'group') return [{ name: (c.lead || 'claude') === who ? '主刀手' : '審查者', color: AGENTS[who].color }];
-    return [{ name: AGENTS[who].role, color: AGENTS[who].color }];
-  }
-
-  const sharedGroups = (who) => S.convs.filter((g) => g.kind === 'group' &&
-    (who === 'gemini' ? g.geminiMember || g.pipeline?.nodes?.some(n => n.backend === 'gemini') : !isLocalAgent(who) || (g.localMembers || []).includes(who)));
-  const dmFor = (who) => (AGENTS[who] && !isLocalAgent(who) ? S.convs.find((x) => x.kind === who) : null);
-
-  function profileSections(who, c, facts) {
-    const section = (title, ...kids) => h('div', { class: 'up-section' }, h('div', { class: 'up-label' }, title), ...kids);
-    const about = who === 'user' ? userAbout() : facts.about;
-    return [
-      about ? section(who === 'user' ? 'AI 怎麼稱呼你' : '關於我', h('div', { class: 'up-text' }, about)) : null,
-      facts ? section('加入時間', h('div', { class: 'up-text' }, facts.date || '未收錄日期'),
-        facts.info && !prof(who).joinedAt ? h('a', { href: facts.info.url, class: 'profile-source' }, '來源：' + facts.info.source) : null) : null,
-      facts ? section('模型', h('div', { class: 'up-text mono' }, facts.model || '尚未回報模型')) : null,
-      section('身分組', h('div', { class: 'up-roles' }, profileRoles(who, c).map((r) =>
-        h('span', { class: 'up-role' }, h('i', { style: { background: r.color } }), r.name)))),
-    ];
-  }
-
-  function profilePopout(who, anchor, convId = S.current) {
-    const c = conv(convId), ai = who !== 'user';
-    const facts = ai ? profileFacts(who, c) : null;
-    const openFull = () => { closePop(); profileFull(who, convId); };
-    const dm = dmFor(who);
-    const input = dm ? h('input', { class: 'up-message', placeholder: '傳送訊息給 @' + displayName(who), 'aria-label': '傳送訊息給 ' + displayName(who) }) : null;
-    if (input) {
-      input.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' || e.isComposing || !input.value.trim()) return;
-        const text = input.value.trim();
-        closePop();
-        openConv(dm.id);
-        send({ type: 'conv.send', id: dm.id, text });
-      });
-    }
-    const card = h('div', { class: 'popover user-popout', role: 'dialog', 'aria-label': displayName(who) + ' 的個人資料' },
-      h('div', { class: 'up-banner', style: bannerStyle(who) },
-        h('button', { class: 'up-icon', type: 'button', 'data-tip': '編輯個人資料', 'aria-label': '編輯個人資料',
-          onclick: () => { closePop(); openSettings(who === 'user' ? 'me' : who); } }, icon('pencil', 16))),
-      h('button', { class: 'up-avatar', type: 'button', 'aria-label': '檢視完整個人資料', onclick: openFull },
-        avatar(who, 80, who === 'user' ? 'ok' : agentStatus(who, convId))),
-      h('div', { class: 'up-body' },
-        h('button', { class: 'up-name', type: 'button', onclick: openFull }, displayName(who)),
-        h('div', { class: 'up-handle' }, profileHandle(who), ai ? h('span', { class: 'app-tag' }, 'APP') : null),
-        window.CCABadges?.row(who),
-        h('div', { class: 'up-inner' }, profileSections(who, c, facts)),
-        h('button', { class: 'up-full', type: 'button', onclick: openFull }, '檢視完整個人資料'),
-        input || (isLocalAgent(who) ? h('div', { class: 'up-note' }, '本地審查員只做唯讀審查，沒有私訊。') : null)));
-    closePop();
-    popEl = card;
-    $('#layers').append(card);
-    // Beside what was clicked: to the left of the member list, to the right of a message avatar.
-    const r = anchor.getBoundingClientRect();
-    const w = card.offsetWidth, hh = card.offsetHeight, gap = 12;
-    const left = r.left + r.width / 2 > window.innerWidth / 2 ? r.left - w - gap : r.right + gap;
-    card.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, left)) + 'px';
-    card.style.top = Math.max(8, Math.min(window.innerHeight - hh - 8, r.top)) + 'px';
-  }
-
-  function profileFull(who, convId = S.current) {
-    const c = conv(convId), ai = who !== 'user';
-    const facts = ai ? profileFacts(who, c) : null;
-    const dm = dmFor(who);
-    const groups = sharedGroups(who);
-    let tab = 'about';
-    const tabs = h('div', { class: 'fp-tabs', role: 'tablist' });
-    const pane = h('div', { class: 'fp-pane' });
-    let close = () => {};
-    const render = () => {
-      put(tabs, [['about', '關於我'], ['groups', '共同群組' + (groups.length ? ' ' + groups.length : '')]].map(([id, label]) =>
-        h('button', { class: 'fp-tab' + (tab === id ? ' sel' : ''), type: 'button', role: 'tab', 'aria-selected': String(tab === id),
-          onclick: () => { tab = id; render(); } }, label)));
-      if (tab === 'about') put(pane, profileSections(who, c, facts));
-      else put(pane, groups.length ? groups.map((g) => h('button', { class: 'fp-group', type: 'button', onclick: () => { close(); openConv(g.id); } },
-        groupAvatar(g, 40), h('div', {}, h('div', { class: 'fp-group-name' }, g.name),
-          h('div', { class: 'fp-group-sub' }, (g.cwd ? g.cwd.split(/[\\/]/).filter(Boolean).pop() + ' · ' : '') + (g.pipeline?.nodes?.length ? 1 + new Set(g.pipeline.nodes.map(n => n.backend)).size : 3 + (g.geminiMember ? 1 : 0) + (g.localMembers || []).length) + ' 位成員'))))
-        : h('div', { class: 'up-note' }, '還沒有共同的群組。'));
-    };
-    render();
-    close = modal({
-      bare: true, cls: 'full-profile', label: displayName(who) + ' 的個人資料',
-      body: [
-        h('div', { class: 'fp-banner', style: bannerStyle(who) }),
-        h('div', { class: 'fp-head' },
-          h('div', { class: 'fp-avatar' }, avatar(who, 120, who === 'user' ? 'ok' : agentStatus(who, convId))),
-          h('div', { class: 'fp-actions' },
-            dm ? h('button', { class: 'btn primary', type: 'button', onclick: () => { close(); openConv(dm.id); } }, '傳送訊息') : null,
-            h('button', { class: 'btn secondary', type: 'button', onclick: () => { close(); openSettings(who === 'user' ? 'me' : who); } },
-              icon('pencil', 14), '編輯個人資料'))),
-        h('div', { class: 'fp-id' }, h('div', { class: 'fp-name' }, displayName(who)),
-          h('div', { class: 'up-handle' }, profileHandle(who), ai ? h('span', { class: 'app-tag' }, 'APP') : null),
-          window.CCABadges?.row(who)),
-        tabs, pane],
-    });
-  }
-
-  function cropDialog(message) {
-    if (S.crop) { send({ type: 'image.cancel', token: message.token }); return; }
-    const body = h('div', { class: 'crop-editor' });
-    const error = h('div', { class: 'crop-error', role: 'alert' });
-    const save = h('button', { class: 'btn primary', disabled: true }, '儲存頭像');
-    const cancel = h('button', { class: 'btn ghost' }, '取消');
-    const state = { token: message.token, saved: false, saving: false, error, save, cancel };
-    S.crop = state;
-    let editor;
-    const close = modal({
-      title: '裁切頭像', desc: '調整位置與縮放，確認後才會替換原本的頭像。', body: [body, error],
-      canClose: () => !state.saving,
-      onClose: () => {
-        editor?.destroy();
-        if (!state.saved) send({ type: 'image.cancel', token: state.token });
-        S.crop = null;
-      },
-      foot: () => [cancel, save],
-    });
-    state.close = close;
-    cancel.onclick = close;
-    editor = new window.CCAProfileMedia.Cropper(body, h, mediaUrl(message.file), () => { save.disabled = false; }, text => { error.textContent = text; });
-    save.onclick = () => {
-      try {
-        const data = editor.png();
-        if (!data) return;
-        state.saving = true; save.disabled = cancel.disabled = true; error.textContent = '';
-        send({ type: 'image.commit', token: state.token, data });
-      } catch (_) { error.textContent = '裁切圖片無法匯出，請重新選擇圖片'; }
-    };
-  }
-
-  function renderSidebar() {
-    const side = $('#sidebar');
-    const group = activeGroup();
-    const context = group?.id || 'home';
-    const scroll = side.dataset.context === context ? $('.side-list', side)?.scrollTop || 0 : 0;
-    side.dataset.context = context;
-    if (group) { renderGroupSidebar(side, group); $('.side-list', side).scrollTop = scroll; return; }
-    const dms = S.convs.filter((c) => c.kind !== 'group');
-    const pendAll = totalPending();
-    const list = h('div', { class: 'side-list scroll-thin' },
-      h('button', { class: `side-nav${S.view === 'account' ? ' active' : ''}`, onclick: () => openView('account') }, icon('chart', 22), '訂閱與用量',
-        !S.auth.ok ? h('span', { class: 'badge' }, '!') : null),
-      h('button', { class: `side-nav${S.view === 'plugins' ? ' active' : ''}`, onclick: () => openView('plugins') }, icon('puzzle', 22), '插件商店'),
-      h('button', { class: 'side-nav', onclick: () => openView('inbox') }, icon('inbox', 22), '收件匣',
-        S.inbox.total || pendAll ? h('span', { class: 'badge' }, S.inbox.total || pendAll) : null),
-      h('div', { class: 'side-head' }, '私人訊息'),
-      dms.map((c) => dmRow(c)),
-    );
-    put(side,
-      h('div', { class: 'side-search' }, h('button', { onclick: quickSwitcher }, '尋找或開始對話')),
-      list,
-    );
-    list.scrollTop = scroll;
-  }
-  function renderGroupSidebar(side, c) {
-    const st = stateOf(c.id), g = st.group || {};
-    const link = (name, symbol, run, selected = false) => h('button', {
-      class: 'group-nav-link' + (selected ? ' active' : ''), type: 'button',
-      'aria-current': selected ? 'page' : null, onclick: run }, icon(symbol, 19), h('span', {}, name));
+    }, groupAvatar(c),
+    h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, c.name), h('div', { class: 'dm-sub' }, groupSub(c))),
+    pend ? h('span', { class: 'badge', 'aria-label': pend + ' 項待處理' }, pend > 99 ? '99+' : pend) : null);
+    if (!selected) return row;
+    // The open group shows its workspace tools right under it, so they stay one click away.
+    const tool = (name, symbol, run) => h('button', { class: 'group-nav-link', type: 'button', onclick: run }, icon(symbol, 15), h('span', {}, name));
     const tools = (event, module) => {
       const content = module?.controls(c);
       if (content) popover(event.currentTarget, [h('div', { onclick: click => {
         if (click.target.closest('button')) closePop();
       } }, content)], 'group-tools-menu');
     };
+    return h('div', { class: 'group-open' }, row,
+      h('div', { class: 'group-tools' },
+        tool('審查變更', 'diff', () => openReview(c, 'task')),
+        tool('版本控制', 'branch', () => openGit(c)),
+        tool('任務控制', 'list', event => tools(event, window.CCACollaboration)),
+        tool('交付驗證', 'check', event => tools(event, window.CCAQuality)),
+        tool('群組設定', 'sliders', event => opsPanel(event.currentTarget, c))));
+  }
+
+  function renderSidebar() {
+    const side = $('#sidebar');
+    // Streaming redraws must not destroy the dragged row while a drag is in progress.
+    if (S.railDrag) return;
+    const scroll = $('.side-list', side)?.scrollTop || 0;
+    const focus = S.railFocus || document.activeElement?.closest('#sidebar [data-nav-id]')?.dataset.navId;
+    const dms = S.convs.filter((c) => c.kind !== 'group');
+    const groups = orderedGroups(), selected = activeGroup();
+    const pendAll = totalPending();
+    const nav = (view, symbol, label, extra) => h('button', { class: `side-nav${S.view === view ? ' active' : ''}`, type: 'button',
+      onclick: () => openView(view) }, icon(symbol, 17), h('span', {}, label), extra);
+    const list = h('div', { class: 'side-list scroll-thin' },
+      nav('inbox', 'inbox', '收件匣', S.inbox.total || pendAll ? h('span', { class: 'badge' }, S.inbox.total || pendAll) : null),
+      nav('account', 'chart', '訂閱與用量', !S.auth.ok ? h('span', { class: 'badge' }, '!') : null),
+      nav('plugins', 'puzzle', '插件商店'),
+      h('div', { class: 'side-head' }, h('span', {}, '協作群組'),
+        h('button', { type: 'button', 'aria-label': '建立協作群組', 'data-tip': '建立協作群組', onclick: createGroupDialog }, icon('plus', 15))),
+      groups.length ? groups.map(c => groupRow(c, selected?.id === c.id))
+        : h('button', { class: 'side-empty', type: 'button', onclick: createGroupDialog }, '建立第一個群組：選一個專案資料夾，讓 Claude 寫、GPT 審。'),
+      h('div', { class: 'side-head' }, h('span', {}, '私人訊息')),
+      dms.map((c) => dmRow(c)),
+    );
     put(side,
-      h('button', { class: 'group-nav-heading', type: 'button', 'aria-label': c.name + ' 群組選項',
-        onclick: event => groupMenu(event.currentTarget, c) }, h('strong', {}, c.name), icon('chevron', 16)),
-      h('div', { class: 'side-list group-sidebar scroll-thin' },
-        h('div', { class: 'group-nav-project', 'data-tip': c.cwd || '尚未選擇專案資料夾' }, icon('folder', 14),
-          h('span', {}, c.cwd ? baseName(c.cwd) : '未設定專案')),
-        h('div', { class: 'side-head' }, '對話'),
-        link('協作對話', 'hash', () => openConv(c.id), true),
-        h('div', { class: 'side-head' }, '工作區'),
-        link('審查變更', 'diff', () => openReview(c, 'task')),
-        link('版本控制', 'branch', () => openGit(c)),
-        link('任務控制', 'list', event => tools(event, window.CCACollaboration)),
-        link('交付驗證', 'check', event => tools(event, window.CCAQuality)),
-        link('成員名單', 'users', () => {
-          if (S.review?.convId === c.id) closeReview();
-          if (!panelVisible()) togglePanel();
-          $('#panel .member-head')?.scrollIntoView({ block: 'nearest' });
-        }),
-        h('div', { class: 'side-head' }, '群組'),
-        link('群組設定', 'sliders', event => opsPanel(event.currentTarget, c)),
-        h('div', { class: 'group-nav-status', role: 'status' }, h('i', { class: st.running ? 'busy' : '' }),
-          h('span', {}, g.active && g.paused ? '協作已暫停' : st.running ? '協作進行中' : '等待工作')),
-        h('p', { class: 'group-nav-hint' }, 'Ctrl + K 快速切換', h('br'), '拖曳左側圖標可調整群組順序')));
+      h('div', { class: 'side-top' }, h('button', { class: 'side-search', type: 'button', onclick: quickSwitcher },
+        icon('search', 15), h('span', {}, '搜尋或切換對話'), h('kbd', {}, 'Ctrl K'))),
+      list,
+    );
+    list.scrollTop = scroll;
+    S.railFocus = '';
+    if (focus) side.querySelector(`[data-nav-id="${CSS.escape(focus)}"]`)?.focus({ preventScroll: true });
   }
   function dmRow(c) {
     const st = stateOf(c.id);
     const active = S.view === 'chat' && S.current === c.id;
     const pend = pendingCount(c.id);
+    const agent = c.kind;
     let sub;
-    if (c.kind === 'group') {
-      const g = st.group || {};
-      if (g.active && g.paused) sub = '等你決定下一步';
-      else if (g.active) sub = `第 ${g.round || 0} 輪 · ${g.current === 'codex' ? 'GPT 審查中' : g.phase === 'write' ? 'Claude 撰寫中' : 'Claude 複審中'}`;
-      else sub = (c.cwd ? baseName(c.cwd) + ' · ' : '') + (3 + (c.geminiMember ? 1 : 0) + (c.localMembers || []).length) + ' 位成員' + (c.cwd ? '' : ' · 尚未選資料夾');
-    } else {
-      const agent = c.kind;
-      if ((st.typing || []).includes(agent)) sub = '正在輸入…';
-      else if ((S.auth[agent] || {}).state !== 'ok') sub = '尚未通過訂閱檢查';
-      else sub = modelLabel(agent, agent === 'claude' ? c.claudeModel : c.codexModel) + (c.cwd ? ' · ' + baseName(c.cwd) : '');
-    }
-    const av = c.kind === 'group'
-      ? groupAvatar(c)
-      : avatar(c.kind, 32, agentStatus(c.kind, c.id));
-    return h('button', { class: `dm${active ? ' active' : ''}${S.unread[c.id] ? ' unread' : ''}`, onclick: () => openConv(c.id) },
-      av,
-      h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, convTitle(c)), h('div', { class: 'dm-sub' }, sub)),
-      pend ? h('span', { class: 'badge' }, pend) : null);
+    if ((st.typing || []).includes(agent)) sub = '正在回覆…';
+    else if ((S.auth[agent] || {}).state !== 'ok') sub = agent === 'gemini' ? stateText(S.auth.gemini?.state) : '尚未通過訂閱檢查';
+    else if (c.daily) sub = '日常模式';
+    else sub = (agent === 'gemini' ? 'CLI 預設模型' : modelLabel(agent, agent === 'claude' ? c.claudeModel : c.codexModel)) + (c.cwd ? ' · ' + baseName(c.cwd) : '');
+    return h('button', { class: `dm${active ? ' active' : ''}${S.unread[c.id] ? ' unread' : ''}`, type: 'button',
+      'data-nav-id': 'dm:' + c.id, onclick: () => openConv(c.id), onkeydown: event => rowKey(event) },
+    avatar(c.kind, 28, agentStatus(c.kind, c.id)),
+    h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, convTitle(c)), h('div', { class: 'dm-sub' }, sub)),
+    pend ? h('span', { class: 'badge' }, pend) : null);
   }
 
   function renderUserbar() {
     const ub = $('#userbar');
     const ok = S.auth.ok;
+    const plans = ['claude', 'codex', 'gemini'].filter(a => S.auth[a]?.state === 'ok').map(a => S.auth[a].planLabel || AGENTS[a].name);
     put(ub,
-      h('button', { class: 'who', type: 'button', 'aria-label': '開啟個人資料', onclick: e => profileDialog('user', S.current, e.currentTarget) }, avatar('user', 32, ok ? 'ok' : 'wait'),
+      h('button', { class: 'who', type: 'button', 'aria-label': '訂閱與用量', 'data-tip': '訂閱與用量', onclick: () => openView('account') }, avatar('user', 28, ok ? 'ok' : 'wait'),
         h('div', { style: { minWidth: 0 } },
           h('div', { class: 'name' }, displayName('user')),
-          h('div', { class: 'sub' }, ['claude', 'codex', 'gemini'].filter(a => S.auth[a]?.state === 'ok').map(a => S.auth[a].planLabel || AGENTS[a].name).join(' · ') || '帳號檢查未完成'))),
-      h('button', { class: 'icon-btn', 'data-tip': '訂閱與用量', onclick: () => openView('account') }, icon('chart', 20)),
+          h('div', { class: 'sub' }, plans.join(' · ') || '帳號檢查未完成'))),
       S.desk.update.available ? h('button', { class: 'icon-btn on', 'aria-label': '有可用更新', 'data-tip': '有可用更新',
-        onclick: () => { openSettings('updates'); send({ type: 'update.get' }); } }, icon('download', 20)) : null,
-      h('button', { class: 'icon-btn', 'aria-label': '使用者設定', 'data-tip': '使用者設定', onclick: () => openSettings() }, icon('sliders', 20)),
+        onclick: () => { openSettings('updates'); send({ type: 'update.get' }); } }, icon('download', 18)) : null,
+      h('button', { class: 'icon-btn', 'aria-label': '設定', 'data-tip': '設定', onclick: () => openSettings() }, icon('sliders', 18)),
     );
   }
 
@@ -1165,7 +924,7 @@
     const facts = headFacts(c);
     head.append(
       c.kind === 'group'
-        ? h('button', { class: 'title', 'data-tip': '編輯群組資料與頭像', onclick: () => renameDialog(c) }, groupAvatar(c, 26), h('span', {}, convTitle(c)))
+        ? h('button', { class: 'title', 'data-tip': '重新命名群組', onclick: () => renameDialog(c) }, groupAvatar(c, 26), h('span', {}, convTitle(c)))
         : h('div', { class: 'title' }, icon('at', 22), h('span', {}, convTitle(c))),
       h('div', { class: 'head-sep' }),
       h('button', { class: 'head-facts', type: 'button', 'data-tip': '頻道設定：模型、權限、資料夾', onclick: (ev) => opsPanel(ev.currentTarget, c) },
@@ -1178,7 +937,8 @@
         h('button', { class: 'icon-btn', 'aria-label': '頻道設定', 'data-tip': '頻道設定', onclick: (ev) => opsPanel(ev.currentTarget, c) }, icon('sliders', 20)),
         c.cwd ? h('button', { class: 'icon-btn', 'data-tip': '在檔案總管開啟資料夾', onclick: () => send({ type: 'open', target: c.cwd }) }, icon('external', 20)) : null,
         h('button', { class: 'icon-btn danger', 'data-tip': c.kind === 'group' ? '清除對話或刪除群組' : '清除對話（開始新的工作階段）', onclick: () => clearDialog(c) }, icon('trash', 20)),
-        h('button', { class: `icon-btn${panelVisible() ? ' on' : ''}`, 'data-tip': panelVisible() ? '隱藏側欄' : '顯示側欄', onclick: togglePanel },
+        h('button', { class: `icon-btn${panelVisible() ? ' on' : ''}`, 'aria-label': '檢視面板', 'aria-pressed': String(panelVisible()),
+          'data-tip': panelVisible() ? '隱藏檢視面板' : '顯示檢視面板', onclick: togglePanel },
           icon(c.kind === 'group' ? 'users' : 'info', 20)),
       ),
     );
@@ -1386,8 +1146,7 @@
     return h('div', { class: 'welcome' },
       avatar(c.kind, 80),
       h('h3', {}, convTitle(c)),
-      h('p', {}, `這是你和 ${convTitle(c)} 私訊的開頭。${convTitle(c)} 透過 ${a.vendor} 的 ${a.cli} 在你的電腦上工作，使用你自己的訂閱額度。`,
-        personaOf(c.kind) ? ` 目前的性格是「${personaOf(c.kind).name}」。` : ''),
+      h('p', {}, `這是你和 ${convTitle(c)} 私訊的開頭。${convTitle(c)} 透過 ${a.vendor} 的 ${a.cli} 在你的電腦上工作，使用你自己的訂閱額度。`),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => pickFolder(c) }, icon('folder', 16), c.cwd ? '更換專案資料夾' : '選擇專案資料夾'),
         c.cwd ? h('span', { class: 'mono muted', style: { fontSize: '13px' } }, c.cwd) : null));
@@ -1427,13 +1186,7 @@
     // The author hook lets a theme shape the user's turns differently from agent replies.
     const el = h('div', { class: `msg${grouped ? '' : ' head'}`, 'data-id': m.id, 'data-author': isAgent ? m.author : 'user' });
     if (!grouped) {
-      el.append(avatar(isAgent ? m.author : 'user', 40));
-      const portrait = el.lastChild;
-      portrait.classList.add('inspect-avatar');
-      portrait.setAttribute('role', 'button'); portrait.tabIndex = 0;
-      portrait.setAttribute('aria-label', '查看 ' + displayName(isAgent ? m.author : 'user') + ' 的資料卡');
-      portrait.onclick = () => profileDialog(isAgent ? m.author : 'user', S.current, portrait);
-      portrait.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); portrait.click(); } };
+      el.append(avatar(isAgent ? m.author : 'user', 28));
       const header = h('div', { class: 'msg-header' },
         h('span', { class: `msg-author ${isAgent ? m.author : ''}` }, m.agent_label ? pipelineName({ name: m.agent_label, backend: m.author }) : displayName(isAgent ? m.author : 'user')),
         m.billing ? h('span', { class: 'phase-tag' }, { api: 'API 計費', local: '本地唯讀', subscription: 'CLI 訂閱', 'google-account': 'Google 帳號' }[m.billing] || m.billing) : null,
@@ -1885,7 +1638,7 @@
       const files = m.files || [];
       const box = h('div', { class: `embed ${ok ? 'green' : ''}`, style: { maxWidth: '560px' } },
         h('div', { class: 'embed-title' }, files.length ? `共變更 ${files.length} 個檔案` : '沒有檔案變更',
-          files.length ? h('span', { style: { fontWeight: 500, fontSize: '13px' } }, h('span', { style: { color: '#3ba55c' } }, ' +' + (m.added || 0)), ' ', h('span', { style: { color: 'var(--red)' } }, '−' + (m.removed || 0))) : null));
+          files.length ? h('span', { style: { fontWeight: 500, fontSize: '13px' } }, h('span', { style: { color: 'var(--green)' } }, ' +' + (m.added || 0)), ' ', h('span', { style: { color: 'var(--red)' } }, '−' + (m.removed || 0))) : null));
       for (const f of files) {
         box.append(h('div', { class: 'file-sum' }, h('span', { class: `kind` }, CHANGE[f.change] || '修改'),
           h('span', { class: 'p' }, '‎' + f.path), h('span', { class: 'plus' }, '+' + (f.added || 0)), h('span', { class: 'minus' }, '−' + (f.removed || 0))));
@@ -1927,6 +1680,11 @@
     else S.panelDrawer = !S.panelDrawer;
     renderAll();
   }
+  // The inspector shows one subject at a time; the tab is remembered per kind of conversation.
+  const PANEL_TABS = {
+    group: [['progress', '進度'], ['members', '成員'], ['checks', '驗收與任務']],
+    dm: [['status', '狀態'], ['permission', '權限'], ['checks', '驗收與任務']],
+  };
   function renderPanel() {
     const p = $('#panel');
     const c = conv();
@@ -1936,9 +1694,20 @@
     p.classList.toggle('drawer', !!show && !panelDocked());
     clear(p);
     if (!show) return;
-    if (c.kind === 'group') renderGroupPanel(p, c); else renderAgentPanel(p, c);
-    if (window.CCAQuality) p.append(window.CCAQuality.controls(c));
-    if (window.CCACollaboration) p.append(window.CCACollaboration.controls(c));
+    const tabs = PANEL_TABS[c.kind === 'group' ? 'group' : 'dm'];
+    const tab = tabs.some(([id]) => id === S.panelTab) ? S.panelTab : tabs[0][0];
+    const pick = (id) => { S.panelTab = id; store.set('panelTab', id); renderPanel(); };
+    p.append(h('div', { class: 'panel-tabs', role: 'tablist', 'aria-label': '檢視面板' },
+      tabs.map(([id, label]) => h('button', { class: 'panel-tab' + (tab === id ? ' sel' : ''), type: 'button', role: 'tab',
+        'aria-selected': String(tab === id), onclick: () => pick(id) }, label)),
+      h('button', { class: 'icon-btn panel-close', type: 'button', 'aria-label': '隱藏檢視面板', 'data-tip': '隱藏檢視面板', onclick: togglePanel }, icon('x', 15))));
+    const body = h('div', { class: 'panel-body scroll-thin', role: 'tabpanel' });
+    p.append(body);
+    if (tab === 'checks') {
+      if (window.CCAQuality) body.append(window.CCAQuality.controls(c));
+      if (window.CCACollaboration) body.append(window.CCACollaboration.controls(c));
+    } else if (c.kind === 'group') renderGroupPanel(body, c, tab);
+    else renderAgentPanel(body, c, tab);
   }
 
   function meter(label, pct, right) {
@@ -2000,31 +1769,30 @@
     h('span', { class: 'radio' })));
   }
 
-  function renderAgentPanel(p, c) {
+  function renderAgentPanel(p, c, tab) {
     const agent = c.kind;
     const a = AGENTS[agent];
     const au = S.auth[agent] || {};
     const okPlan = au.state === 'ok';
+    if (tab === 'permission') {
+      p.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '權限模式'), permList(c)));
+      return;
+    }
     p.append(
-      h('div', { class: 'profile-banner', style: bannerStyle(agent) }, avatar(agent, 88, agentStatus(agent, c.id))),
-      h('div', { class: 'profile-body' },
-        h('div', { class: 'profile-name' }, convTitle(c)),
-        h('div', { class: 'profile-handle' }, `${a.vendor} · ${a.cli}${au.version ? ' ' + au.version : ''}`,
-          h('span', { class: `plan-badge ${okPlan ? 'ok' : 'bad'}` }, au.planLabel || (okPlan ? '已訂閱' : '未通過檢查'))),
-        h('div', { class: 'pe-row', style: { marginTop: '12px' } },
-          h('button', { class: 'btn sm secondary', onclick: () => openSettings(agent) }, icon('pencil', 14), '編輯個人資料與性格'),
-          personaOf(agent) ? h('span', { class: 'tag' }, '性格：' + personaOf(agent).name) : null),
-        h('div', { class: 'card' }, h('div', { class: 'card-title' }, '目前設定'),
-          agent === 'gemini' ? h('div', { class: 'kv' }, h('span', {}, '模型'), h('span', {}, 'Gemini CLI 預設（CLI 未提供模型目錄）')) : [
-            c.daily ? h('div', { class: 'kv' }, h('span', {}, '日常模式'), h('span', {}, modelWithEffort(agent, dailyPick(agent).model, dailyPick(agent).effort))) : null,
-            h('div', { class: 'kv' }, h('span', {}, c.daily ? '工作模式的模型' : '模型'), h('span', {}, modelLabel(agent, agent === 'claude' ? c.claudeModel : c.codexModel))),
-            h('div', { class: 'kv' }, h('span', {}, '思考程度'), h('span', {}, effortLabel(agent === 'claude' ? c.claudeEffort : c.codexEffort) || '模型預設'))],
-          h('div', { class: 'kv' }, h('span', {}, '專案資料夾'), h('span', { 'data-tip': c.cwd }, c.cwd || '未選擇'))),
-        h('div', { class: 'card' }, h('div', { class: 'card-title' }, '用量', h('button', { class: 'act', onclick: () => send({ type: agent === 'gemini' ? 'auth.check' : 'usage.refresh', agent }) }, '更新')), usageBlock(agent)),
-        h('div', { class: 'card' }, h('div', { class: 'card-title' }, '權限模式'), permList(c)),
-        agent === 'gemini' ? null : h('div', { class: 'card' }, h('div', { class: 'card-title' }, '插件', h('button', { class: 'act', onclick: () => { S.pluginTab = agent; openView('plugins'); } }, '管理')),
-          h('div', { class: 'muted', style: { fontSize: '13px' } }, pluginSummary(agent))),
-      ),
+      h('div', { class: 'agent-head' }, avatar(agent, 36, agentStatus(agent, c.id)),
+        h('div', { class: 'agent-id' }, h('div', { class: 'agent-name' }, convTitle(c)),
+          h('div', { class: 'agent-cli' }, `${a.vendor} · ${a.cli}${au.version ? ' ' + au.version : ''}`)),
+        h('span', { class: `plan-badge ${okPlan ? 'ok' : 'bad'}` }, au.planLabel || (okPlan ? '已訂閱' : '未通過檢查'))),
+      h('div', { class: 'card' }, h('div', { class: 'card-title' }, '目前設定'),
+        agent === 'gemini' ? h('div', { class: 'kv' }, h('span', {}, '模型'), h('span', {}, 'Gemini CLI 預設（CLI 未提供模型目錄）')) : [
+          c.daily ? h('div', { class: 'kv' }, h('span', {}, '日常模式'), h('span', {}, modelWithEffort(agent, dailyPick(agent).model, dailyPick(agent).effort))) : null,
+          h('div', { class: 'kv' }, h('span', {}, c.daily ? '工作模式的模型' : '模型'), h('span', {}, modelLabel(agent, agent === 'claude' ? c.claudeModel : c.codexModel))),
+          h('div', { class: 'kv' }, h('span', {}, '思考程度'), h('span', {}, effortLabel(agent === 'claude' ? c.claudeEffort : c.codexEffort) || '模型預設'))],
+        h('div', { class: 'kv' }, h('span', {}, '權限'), h('span', {}, (PERMS[c.permission] || PERMS.edit).label)),
+        h('div', { class: 'kv' }, h('span', {}, '專案資料夾'), h('span', { 'data-tip': c.cwd }, c.cwd || '未選擇'))),
+      h('div', { class: 'card' }, h('div', { class: 'card-title' }, '用量', h('button', { class: 'act', onclick: () => send({ type: agent === 'gemini' ? 'auth.check' : 'usage.refresh', agent }) }, '更新')), usageBlock(agent)),
+      agent === 'gemini' ? null : h('div', { class: 'card' }, h('div', { class: 'card-title' }, '插件', h('button', { class: 'act', onclick: () => { S.pluginTab = agent; openView('plugins'); } }, '管理')),
+        h('div', { class: 'muted', style: { fontSize: '13px' } }, pluginSummary(agent))),
     );
   }
   function pluginSummary(agent) {
@@ -2072,59 +1840,56 @@
     return node.name && node.name !== profile ? node.name + (profile ? ' · ' + profile : '') : profile || node.id;
   }
 
-  function renderGroupPanel(p, c) {
+  function renderGroupPanel(p, c, tab) {
+    const st = stateOf(c.id);
     if (c.pipeline?.nodes?.length) {
-      const st = stateOf(c.id), task = st.task || {};
+      const task = st.task || {};
       const nodes = task.pipeline?.nodes || c.pipeline.nodes;
-      p.append(h('div', { class: 'member-head' }, '參與代理 — ' + nodes.length));
-      nodes.forEach((node, index) => {
-        const known = !!AGENTS[node.backend];
-        const title = pipelineName(node);
-        const details = (PHASES[node.role] || node.role) + ' · ' +
-          (node.model || (node.backend === 'gemini' ? 'Gemini CLI 預設模型' : node.backend)) +
-          (node.backend === 'api' ? ' · API 計費' : node.backend === 'local' ? ' · 唯讀' : '') +
-          (st.running && task.cursor === index ? ' · 目前代理' : '');
-        p.append(h(known ? 'button' : 'div', { class: 'member' + (known ? ' member-link' : ''),
-          type: known ? 'button' : null, 'data-node-id': node.id,
-          'aria-label': known ? '查看 ' + title + ' 的資料卡' : null,
-          onclick: known ? e => profileDialog(node.backend, c.id, e.currentTarget) : null },
-        avatar(node.backend, 32, known ? agentStatus(node.backend, c.id) : null),
-        h('span', { class: 'tag' }, String(index + 1)),
-        h('div', { class: 'member-info' }, h('div', { class: 'mn ' + node.backend }, title), h('div', { class: 'ms' }, details))));
-      });
+      if (tab === 'members') {
+        p.append(h('div', { class: 'member-head' }, '參與代理 — ' + nodes.length));
+        nodes.forEach((node, index) => {
+          const known = !!AGENTS[node.backend];
+          const details = (PHASES[node.role] || node.role) + ' · ' +
+            (node.model || (node.backend === 'gemini' ? 'Gemini CLI 預設模型' : node.backend)) +
+            (node.backend === 'api' ? ' · API 計費' : node.backend === 'local' ? ' · 唯讀' : '') +
+            (st.running && task.cursor === index ? ' · 目前代理' : '');
+          p.append(h('div', { class: 'member', 'data-node-id': node.id },
+            avatar(node.backend, 28, known ? agentStatus(node.backend, c.id) : null),
+            h('span', { class: 'tag' }, String(index + 1)),
+            h('div', { class: 'member-info' }, h('div', { class: 'mn ' + node.backend }, pipelineName(node)), h('div', { class: 'ms' }, details))));
+        });
+        const quota = [...new Set(nodes.map(n => n.backend))].filter(a => ['claude', 'codex', 'gemini'].includes(a));
+        if (quota.length) p.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '帳號額度'),
+          quota.map(a => h('div', { class: 'pipeline-quota' }, h('div', { class: 'embed-field-name' }, displayName(a)), usageBlock(a)))));
+        return;
+      }
       p.append(...[window.CCAPlatform.controls(c, task), timelineCard(c, st), taskCard(c, task)].filter(Boolean));
-      const quota = [...new Set(nodes.map(n => n.backend))].filter(a => ['claude', 'codex', 'gemini'].includes(a));
-      if (quota.length) p.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '帳號額度'),
-        quota.map(a => h('div', { class: 'pipeline-quota' }, h('div', { class: 'embed-field-name' }, displayName(a)), usageBlock(a)))));
       return;
     }
-    const st = stateOf(c.id);
+    if (tab !== 'members') {
+      // append() would print a null child as the text "null".
+      if (window.CCAPlatform) p.append(...[window.CCAPlatform.controls(c, st.task)].filter(Boolean));
+      p.append(...[timelineCard(c, st), taskCard(c, st.task)].filter(Boolean));
+      return;
+    }
     const g = st.group || {};
     const typing = st.typing || [];
-    const member = (kind, name, sub) => h('button', { class: 'member member-link', type: 'button', 'aria-label': '查看 ' + name + ' 的資料卡', onclick: (e) => profileDialog(kind, c.id, e.currentTarget) },
-      kind === 'user' ? avatar('user', 32, 'ok') : avatar(kind, 32, agentStatus(kind, c.id)),
-      h('div', {}, h('div', { class: `mn ${kind}` }, name), h('div', { class: 'ms' }, sub)));
-    // Members grouped by role, the way Discord groups a member list.
+    const member = (kind, name, sub) => h('div', { class: 'member', 'data-agent': kind },
+      kind === 'user' ? avatar('user', 28, 'ok') : avatar(kind, 28, agentStatus(kind, c.id)),
+      h('div', { class: 'member-info' }, h('div', { class: `mn ${kind}` }, name), h('div', { class: 'ms' }, sub)));
     const lead = c.lead || 'claude', second = lead === 'claude' ? 'codex' : 'claude';
     const doing = (a) => typing.includes(a) ? (PHASES[g.phase] || '處理') + '中…'
       : c.exhausted?.[a] || (a === 'claude' && c.claudeLimited) ? '額度不足 · 輪到時跳過'
         : a === 'gemini' ? (S.auth.gemini?.state === 'ok' ? 'Gemini CLI 預設模型' : stateText(S.auth.gemini?.state) + ' · 輪到時跳過')
           : modelLabel(a, a === 'claude' ? c.claudeModel : c.codexModel);
     const group = (title, items) => (items.length ? [h('div', { class: 'member-head' }, `${title} — ${items.length}`), ...items] : []);
-    p.append(...group('指揮官', [member('user', displayName('user'), '下指令')]),
-      ...group('主刀手', [member(lead, displayName(lead), doing(lead))]),
-      ...group('審查者', [member(second, displayName(second), doing(second)),
+    p.append(...group('主刀', [member(lead, displayName(lead), doing(lead))]),
+      ...group('審查', [member(second, displayName(second), doing(second)),
         c.geminiMember ? member('gemini', displayName('gemini'), doing('gemini')) : null].filter(Boolean)),
       ...group('唯讀審查員', (c.localMembers || []).map((l) => member(l, displayName(l),
         typing.includes(l) ? '唯讀審查中…' : (((S.settings.locals || {})[l] || {}).model || '尚未設定模型')))));
-    // append() would print a null child as the text "null".
-    if (window.CCAPlatform) p.append(...[window.CCAPlatform.controls(c, st.task)].filter(Boolean));
-    // Settings (lead, models, permissions, local reviewers, round limit) live in the channel settings panel.
-    const sec = h('div', { class: 'panel-section' });
-    sec.append(...[timelineCard(c, st), taskCard(c, st.task)].filter(Boolean));
-    sec.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '額度'),
+    p.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '額度'),
       h('div', { class: 'embed-field-name' }, 'Claude'), usageBlock('claude'), h('div', { class: 'embed-field-name', style: { marginTop: '8px' } }, 'GPT'), usageBlock('codex')));
-    p.append(sec);
   }
 
   // The cross-review timeline of the latest run: who did each turn, the verdict, and how much each
@@ -2573,20 +2338,15 @@
 
   function renameDialog(c) {
     const name = h('input', { class: 'input', value: convTitle(c), maxlength: 80 });
-    const picture = h('div', { class: 'group-photo-preview' }, groupAvatar(c, 80));
-    const remove = h('button', { class: 'btn ghost sm', onclick: () => send({ type: 'conv.avatar.remove', id: c.id }) }, '移除群組頭像');
-    const refresh = () => { const current = conv(c.id) || c; put(picture, groupAvatar(current, 80)); remove.hidden = !current.avatar; };
-    S.groupEditor = { id: c.id, refresh };
-    modal({
-      title: '群組資料', onClose: () => { S.groupEditor = null; },
-      desc: '頭像儲存或移除後立即生效；名稱需另按「儲存名稱」。',
-      body: [h('div', { class: 'group-photo-edit' }, picture,
-        h('div', {}, h('button', { class: 'btn secondary sm', onclick: () => send({ type: 'conv.image', id: c.id }) }, '更換群組頭像'), remove)),
-        h('div', { class: 'field' }, h('label', {}, '群組名稱'), name)],
-      foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '關閉'),
-        h('button', { class: 'btn primary', onclick: () => { if (name.value.trim()) send({ type: 'conv.settings', id: c.id, settings: { name: name.value.trim() } }); close(); } }, '儲存名稱')],
+    const save = (close) => { if (name.value.trim()) send({ type: 'conv.settings', id: c.id, settings: { name: name.value.trim() } }); close(); };
+    name.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) save(close); });
+    const close = modal({
+      title: '重新命名群組',
+      body: [h('div', { class: 'field' }, h('label', {}, '群組名稱'), name)],
+      foot: (done) => [h('button', { class: 'btn ghost', onclick: done }, '取消'),
+        h('button', { class: 'btn primary', onclick: () => save(done) }, '儲存')],
     });
-    refresh();
+    setTimeout(() => name.select(), 0);
   }
 
   function clearDialog(c) {
@@ -2667,8 +2427,7 @@
 
   // ================================================================ user settings
   // A full-screen page like Discord's User Settings: profiles, personas, daily mode.
-  const settingsUi = { open: false, section: 'me', el: null, renameOnPick: true };
-  const SWATCHES = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459e', '#d97757', '#10a37f', '#4f7bd8', '#9b84ec', '#1e1f22'];
+  const settingsUi = { open: false, section: 'advanced', el: null };
 
   function openSettings(section) {
     if (!settingsUi.open || section === 'local') settingsUi.localAsked = false;
@@ -2700,37 +2459,25 @@
     const item = (id, label, lead) => h('button', { class: 'ss-item' + (settingsUi.section === id ? ' sel' : ''),
       onclick: () => { settingsUi.section = id; renderSettings(); if (id === 'updates') send({ type: 'update.get' }); } }, lead || null, label);
     const nav = h('nav', {},
-      h('div', { class: 'ss-group' }, '使用者設定'),
-      item('me', '我的個人資料', avatar('user', 20)),
-      h('div', { class: 'ss-sep' }),
-      h('div', { class: 'ss-group' }, 'AI 設定'),
-      item('claude', displayName('claude'), avatar('claude', 20)),
-      item('codex', displayName('codex'), avatar('codex', 20)),
-      item('gemini', displayName('gemini'), avatar('gemini', 20)),
-      special() ? null : item('local', '本地模型'),
-      special() ? null : item('local1', displayName('local1'), avatar('local1', 20)),
-      special() ? null : item('local2', displayName('local2'), avatar('local2', 20)),
+      h('div', { class: 'ss-group' }, '代理'),
+      item('advanced', '登入與執行檔'),
       item('routing', '自動模型與思考程度'),
       item('platform', '多代理與 API 工具'),
-      special() ? null : item('personas', '性格庫'),
+      special() ? null : item('local', '本地審查員'),
       special() ? null : item('daily', '日常模式'),
       item('humanize', '去 AI 化'),
       item('resume', '額度與自動接續'),
-      h('div', { class: 'ss-sep' }),
-      h('div', { class: 'ss-group' }, 'App 設定'),
-      item('themes', '介面主題'),
-      item('extensions', 'CCA 插件'),
+      h('div', { class: 'ss-group' }, 'CCA'),
+      item('themes', '外觀'),
       item('layout', '版面與閱讀'),
-      item('updates', '軟體更新'),
+      item('extensions', 'CCA 插件'),
       item('git', '版本控制'),
-      item('advanced', '執行檔與資料'),
-      item('about', '關於 ChatClaudeAgent'));
+      item('updates', '軟體更新'),
+      item('about', '關於 CCA'));
     const content = h('div', { class: 'settings-content' });
     const sec = settingsUi.section;
-    if (sec === 'me' || AGENTS[sec]) renderProfileSection(content, sec === 'me' ? 'user' : sec);
-    else if (sec === 'local') renderLocalSection(content);
+    if (sec === 'local') renderLocalSection(content);
     else if (sec === 'platform' && window.CCAPlatform) window.CCAPlatform.providersPage(content);
-    else if (sec === 'personas') renderPersonaLibrary(content);
     else if (sec === 'daily') renderDailySection(content);
     else if (sec === 'humanize') renderHumanizeSection(content);
     else if (sec === 'themes') appearance.themePage(content);
@@ -2751,166 +2498,6 @@
       const again = settingsUi.el.querySelector('[data-keep="' + keepId + '"]');
       if (again) { again.focus(); if (caret != null && again.setSelectionRange) again.setSelectionRange(caret, caret); }
     }
-  }
-
-  function previewCard(who) {
-    const persona = who === 'user' ? null : personaOf(who);
-    const sub = who === 'user' ? '你'
-      : AGENTS[who].vendor + ' · ' + AGENTS[who].cli + (persona ? ' · 性格：' + persona.name : '');
-    let about = '';
-    if (who === 'user') {
-      about = userAbout();
-    } else {
-      about = profileFacts(who).about;
-    }
-    return h('div', { class: 'preview-card' },
-      h('div', { class: 'pc-banner', style: bannerStyle(who) }),
-      h('div', { class: 'pc-avatar' }, avatar(who, 80, who === 'user' ? 'ok' : agentStatus(who))),
-      h('div', { class: 'pc-body' },
-        h('div', { class: 'pc-name' }, displayName(who)),
-        h('div', { class: 'pc-sub' }, sub),
-        window.CCABadges?.row(who),
-        about ? [h('div', { class: 'pc-sep' }), h('div', { class: 'pc-label' }, who === 'user' ? 'AI 怎麼稱呼你' : '自我介紹'),
-          h('div', { class: 'pc-text' }, about)] : null));
-  }
-
-  function renderProfileSection(box, who) {
-    const p = prof(who);
-    const isAi = who !== 'user';
-    const def = who === 'user' ? S.user.name : AGENTS[who].name;
-    const nameInput = h('input', { class: 'input', value: p.name || '', placeholder: def, maxlength: 32, 'data-keep': 'name-' + who });
-    let timer = null;
-    nameInput.addEventListener('input', () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => send({ type: 'profile.set', who, name: nameInput.value }), 350);
-    });
-    const curColor = p.bannerColor || defaultBanner(who);
-    const joined = h('input', { type: 'date', class: 'input', value: p.joinedAt || '', 'aria-label': '自訂加入日期', 'data-keep': 'joined-' + who });
-    joined.addEventListener('change', () => send({ type: 'profile.set', who, joinedAt: joined.value || null }));
-    const defaultDate = isAi ? profileFacts(who).info?.date : '';
-    const colorInput = h('input', { type: 'color', class: 'color-input', value: curColor, 'data-tip': '自訂顏色' });
-    colorInput.addEventListener('change', () => send({ type: 'profile.set', who, bannerColor: colorInput.value }));
-    box.append(
-      h('h2', {}, who === 'user' ? '我的個人資料' : displayName(who) + ' 的個人資料'),
-      isAi ? h('p', { class: 'lead' }, isLocalAgent(who) ? '這是第 ' + who.slice(-1) + ' 位本地唯讀審查員的名稱、頭像、橫幅和性格。模型在「本地模型」裡選。' : '這裡改的是 ' + AGENTS[who].name + ' 在 CCA 裡顯示的名稱、頭像和橫幅，以及它說話的性格。它背後仍然是 ' + AGENTS[who].vendor + ' 的 ' + AGENTS[who].cli + '。')
-        : h('p', { class: 'lead' }, '你在對話裡顯示的名稱、頭像和橫幅。AI 在群組裡也會用這個名稱稱呼你。'),
-      h('div', { class: 'profile-edit' },
-        h('div', { class: 'pe-form' },
-          h('div', { class: 'field' }, h('label', {}, '顯示名稱'), nameInput,
-            h('div', { class: 'hint' }, '留空就使用「' + def + '」。')),
-          isAi ? h('div', { class: 'field' }, h('label', {}, '加入日期'), joined,
-            h('div', { class: 'hint' }, '留空依目前模型的發布日' + (defaultDate ? '（' + defaultDate + '）' : '，未知日期不會自動填入') + '。')) : null,
-          h('div', { class: 'field' }, h('label', {}, '頭像'),
-            h('div', { class: 'pe-row' },
-              h('button', { class: 'btn primary sm', onclick: () => send({ type: 'profile.image', who, kind: 'avatar' }) }, '更換頭像'),
-              p.avatar ? h('button', { class: 'btn ghost sm', onclick: () => send({ type: 'profile.set', who, avatar: null }) }, '移除頭像') : null),
-            h('div', { class: 'hint' }, 'PNG、JPG、GIF 或 WebP，10 MB 以內；裁切後儲存為 512 × 512 靜態 PNG。')),
-          h('div', { class: 'field' }, h('label', {}, '橫幅'),
-            h('div', { class: 'pe-row' },
-              h('button', { class: 'btn secondary sm', onclick: () => send({ type: 'profile.image', who, kind: 'banner' }) }, '更換橫幅圖片'),
-              p.banner ? h('button', { class: 'btn ghost sm', onclick: () => send({ type: 'profile.set', who, banner: null }) }, '移除圖片') : null),
-            h('div', { class: 'swatches' },
-              SWATCHES.map((col) => h('button', { class: 'swatch' + (!p.banner && curColor.toLowerCase() === col ? ' sel' : ''), style: { background: col },
-                'aria-label': col, onclick: () => send({ type: 'profile.set', who, bannerColor: col }) })),
-              colorInput),
-            h('div', { class: 'hint' }, p.banner ? '目前使用圖片；移除圖片後會顯示這個顏色。沒有頭像時，字母頭像也用這個顏色。' : '沒有頭像時，字母頭像也用這個顏色。'))),
-        previewCard(who)));
-    if (isAi) renderPersonaPicker(box, who);
-    else box.append(h('div', { class: 'field' }, h('h3', {}, '個人徽章'),
-      h('p', { class: 'lead' }, '所有安裝內建成員徽章；其他徽章依本機授予資料顯示。'),
-      h('button', { class: 'btn secondary', type: 'button', 'data-manage-badges': true, onclick: () => window.CCABadges?.open() }, '管理徽章')));
-  }
-
-  function renderPersonaPicker(box, agent) {
-    const cur = ((S.settings.persona || {})[agent]) || 'none';
-    const rename = h('input', { type: 'checkbox', checked: settingsUi.renameOnPick });
-    rename.addEventListener('change', () => { settingsUi.renameOnPick = rename.checked; });
-    const pick = (id) => send({ type: 'persona.assign', agent, id, rename: id !== 'none' && rename.checked });
-    const card = (p) => {
-      const id = p ? p.id : 'none';
-      const sel = cur === id;
-      return h('div', { class: 'persona-card' + (sel ? ' sel' : ''), role: 'button', tabIndex: 0, onclick: () => { if (!sel) pick(id); } },
-        h('span', { class: 'radio' }),
-        h('div', { class: 'pp-main' },
-          h('div', { class: 'pp-name' }, p ? p.name : '無性格',
-            p ? h('span', { class: 'tag' }, p.builtin ? '本機預設' : '自訂') : null,
-            p && p.agent !== 'any' && p.agent !== agent && !(p.agent === 'local' && isLocalAgent(agent)) ? h('span', { class: 'tag' }, '原本是給 ' + (p.agent === 'local' ? '本地審查員' : AGENTS[p.agent].name) + ' 的') : null),
-          h('div', { class: 'pp-sum' }, p ? (p.summary || '（沒有簡介）') : AGENTS[agent].name + ' 原本的說話方式。'),
-          p && sel ? h('details', { class: 'prompt-view', onclick: (e) => e.stopPropagation() }, h('summary', {}, '查看完整的性格指示'), h('pre', {}, p.prompt)) : null),
-        p ? h('div', { class: 'pp-actions' },
-          h('button', { class: 'btn sm outline', onclick: (e) => { e.stopPropagation(); personaEditor(p.builtin ? { ...p, id: '', builtin: false, name: p.name + '（自訂）' } : p, agent); } },
-            p.builtin ? '複製並修改' : '編輯')) : null);
-    };
-    const fits = (p) => p.agent === agent || p.agent === 'any' || (isLocalAgent(agent) && p.agent === 'local');
-    const mine = S.personas.filter(fits);
-    const others = S.personas.filter((p) => !fits(p));
-    box.append(
-      h('h3', {}, '性格'),
-      h('p', { class: 'lead', style: { marginTop: 0 } }, '性格只改變說話的語氣和態度，不影響程式能力；權限規則和協作流程的格式永遠優先。換性格後，下一則訊息開始生效。'),
-      h('div', { class: 'persona-list' }, card(null), mine.map(card), others.map(card)),
-      h('div', { class: 'pe-row', style: { marginTop: '12px' } },
-        h('button', { class: 'btn primary sm', onclick: () => personaEditor({ agent }, agent) }, icon('plus', 14), '建立自訂性格'),
-        h('label', { class: 'check', style: { marginLeft: '8px', fontSize: '13px' } }, rename, '選擇角色時，同時把名稱改成角色名')));
-  }
-
-  function personaEditor(p, assignTo) {
-    const name = h('input', { class: 'input', value: p.name || '', maxlength: 32, placeholder: '例如：嚴格的資深工程師' });
-    const agent = h('select', { class: 'select' },
-      h('option', { value: 'claude' }, '給 ' + displayName('claude') + '（Claude）'),
-      h('option', { value: 'codex' }, '給 ' + displayName('codex') + '（GPT）'),
-      h('option', { value: 'gemini' }, '給 ' + displayName('gemini') + '（Gemini）'),
-      h('option', { value: 'local' }, '給本地審查員'),
-      h('option', { value: 'any' }, '都可以'));
-    agent.value = p.agent || assignTo || 'any';
-    const summary = h('input', { class: 'input', value: p.summary || '', maxlength: 120, placeholder: '一句話介紹，會顯示在個人資料卡上' });
-    const address = h('input', { class: 'input', value: p.address || '', maxlength: 20, placeholder: '例如：指揮官、老闆、學長（選填）' });
-    const prompt = h('textarea', { class: 'input', rows: 12, style: { fontFamily: 'var(--font)', fontSize: '14px', minHeight: '220px' },
-      placeholder: '用自己的話描述這個角色：身分、性格、說話方式、口頭禪……\n\n例如：\n你是一位冷靜的資深工程師，說話簡短直接，遇到風險會先提醒，喜歡用比喻解釋概念。' });
-    prompt.value = p.prompt || '';
-    const useNow = h('input', { type: 'checkbox', checked: !!assignTo });
-    modal({
-      title: p.id ? '編輯性格' : '建立性格',
-      desc: '寫下角色的身分、性格和說話方式。CCA 會自動加上規則：角色只影響語氣，不能降低程式品質，也不能蓋過權限和協作流程。',
-      wide: true,
-      body: [
-        h('div', { class: 'field' }, h('label', {}, '名稱'), name),
-        h('div', { class: 'field' }, h('label', {}, '適合'), agent),
-        h('div', { class: 'field' }, h('label', {}, '簡介'), summary),
-        h('div', { class: 'field' }, h('label', {}, '稱呼你為'), address),
-        h('div', { class: 'field' }, h('label', {}, '性格與說話方式'), prompt),
-        assignTo ? h('label', { class: 'check' }, useNow, '儲存後讓 ' + displayName(assignTo) + ' 使用這個性格') : null,
-      ],
-      foot: (close) => [
-        p.id && !p.builtin ? h('button', { class: 'btn ghost', style: { marginRight: 'auto', color: 'var(--danger-text)' }, onclick: () => {
-          send({ type: 'persona.delete', id: p.id });
-          close();
-        } }, '刪除這個性格') : null,
-        h('button', { class: 'btn ghost', onclick: close }, '取消'),
-        h('button', { class: 'btn primary', onclick: () => {
-          if (!name.value.trim() || !prompt.value.trim()) { toast('error', '名稱和性格與說話方式都要填'); return; }
-          send({ type: 'persona.save', persona: { id: p.builtin ? '' : (p.id || ''), name: name.value.trim(), agent: agent.value, summary: summary.value.trim(),
-            address: address.value.trim(), prompt: prompt.value }, assignTo: assignTo && useNow.checked ? assignTo : '' });
-          close();
-        } }, '儲存')],
-    });
-  }
-
-  function renderPersonaLibrary(box) {
-    const used = (id) => PROFILE_AGENTS.filter((a) => ((S.settings.persona || {})[a]) === id).map((a) => displayName(a));
-    box.append(h('h2', {}, '性格庫'),
-      h('p', { class: 'lead' }, '性格由本機資料管理，程式不綁定角色或預設指派。可建立自訂性格，或在資料目錄加入 persona-presets.json，重新啟動後載入。表達風格不會改變技術規範、工具權限與協作格式。'),
-      !S.personas.length ? h('p', { class: 'muted' }, '尚未建立性格。代理將沿用原本的表達方式。') : null,
-      h('div', { class: 'persona-list' }, S.personas.map((p) => h('div', { class: 'persona-card' },
-        h('div', { class: 'pp-main' },
-          h('div', { class: 'pp-name' }, p.name, h('span', { class: 'tag' }, p.builtin ? '本機預設' : '自訂'),
-            p.agent === 'local' ? h('span', { class: 'tag' }, '給本地審查員') : p.agent !== 'any' && AGENTS[p.agent] ? h('span', { class: 'tag' }, '給 ' + AGENTS[p.agent].name) : h('span', { class: 'tag' }, '都可以'),
-            used(p.id).length ? h('span', { class: 'inst-tag' }, used(p.id).join('、') + ' 使用中') : null),
-          h('div', { class: 'pp-sum' }, p.summary || '（沒有簡介）'),
-          h('details', { class: 'prompt-view' }, h('summary', {}, '查看完整的性格指示'), h('pre', {}, p.prompt))),
-        h('div', { class: 'pp-actions' },
-          h('button', { class: 'btn sm outline', onclick: () => personaEditor(p.builtin ? { ...p, id: '', builtin: false, name: p.name + '（自訂）' } : p, null) }, p.builtin ? '複製並修改' : '編輯'))))),
-      h('div', { class: 'pe-row', style: { marginTop: '12px' } },
-        h('button', { class: 'btn primary sm', onclick: () => personaEditor({ agent: 'any' }, null) }, icon('plus', 14), '建立性格')));
   }
 
   function autoDailyModel(agent) {
@@ -2944,7 +2531,7 @@
         h('div', { class: 'hint', style: { marginTop: '10px', fontSize: '12px', color: 'var(--text-muted)' } }, '目前會用：' + modelWithEffort(agent, now.model, now.effort)));
     };
     box.append(h('h2', {}, '日常模式'),
-      h('p', { class: 'lead' }, '在私訊的標題列打開「日常模式」，就會改用最省額度的模型和最低的思考程度跟你聊天，不需要選專案資料夾；AI 要改檔案或執行指令前都會先問你。性格設定一樣有效。'),
+      h('p', { class: 'lead' }, '在私訊的標題列打開「日常模式」，就會改用最省額度的模型和最低的思考程度跟你聊天，不需要選專案資料夾；AI 要改檔案或執行指令前都會先問你。'),
       h('div', { class: 'daily-grid' }, block('claude'), block('codex')));
   }
 
@@ -3014,7 +2601,7 @@
       h('div', { class: 'pe-row', style: { marginTop: '12px' } }, h('button', { class: 'btn secondary sm', onclick: settingsDialog }, '指定執行檔位置')),
       h('h3', {}, '資料'),
       h('div', { class: 'muted', style: { fontSize: '14px', lineHeight: 1.6 } },
-        '對話紀錄、設定和自訂頭像存在 %APPDATA%\\CCA。CCA 不會把你的程式碼或對話傳到 Anthropic 和 OpenAI 以外的地方。'));
+        '對話紀錄與設定存在 %APPDATA%\\CCA。CCA 不會把你的程式碼或對話傳到 Anthropic 和 OpenAI 以外的地方。'));
   }
 
   function renderAboutSection(box) {
@@ -3086,17 +2673,14 @@
       const noTools = curModel && curModel.tools === false;
       const sw = h('button', { class: 'chip keep toggle' + (enabled ? ' on' : ''), onclick: () => send({ type: 'local.set', slot, enabled: !enabled }) },
         h('span', { class: 'switch' }, h('i')), h('span', {}, enabled ? '啟用' : '停用'));
-      const persona = personaOf(slot);
       return h('div', { class: 'card', style: { marginTop: 0 } },
         h('div', { class: 'card-title' }, avatar(slot, 20), displayName(slot), h('span', { style: { marginLeft: 'auto' } }, sw)),
-        h('div', { class: 'muted', style: { fontSize: '12px', marginBottom: '8px' } }, persona ? '性格：' + persona.name + '　' + (persona.summary || '') : '沒有性格'),
         h('div', { class: 'field', style: { marginBottom: '10px' } }, h('label', {}, '模型'), sel),
         noTools ? h('div', { class: 'notice-line warn', style: { marginBottom: '10px' } }, icon('alert', 15),
-          cur + ' 不支援工具呼叫，沒辦法自己讀檔，群組裡會略過這位審查員。請換成支援工具的模型。') : null,
-        h('button', { class: 'btn sm secondary', onclick: () => openSettings(slot) }, icon('pencil', 14), '編輯個人資料與性格'));
+          cur + ' 不支援工具呼叫，沒辦法自己讀檔，群組裡會略過這位審查員。請換成支援工具的模型。') : null);
     };
     box.append(h('h3', {}, '兩位審查員'),
-      h('p', { class: 'lead', style: { marginTop: 0 } }, '兩位可以共用同一個模型，只差在性格，最省硬碟和顯示卡記憶體。'),
+      h('p', { class: 'lead', style: { marginTop: 0 } }, '兩位可以共用同一個模型，最省硬碟和顯示卡記憶體；換成不同模型能得到不同角度的意見。'),
       h('div', { class: 'daily-grid' }, slotCard('local1'), slotCard('local2')));
 
     // Recommendations for this hardware, with download progress.
@@ -3428,11 +3012,9 @@
       const a = AGENTS[agent];
       const au = S.auth[agent] || {};
       const ok = au.state === 'ok';
-      return h('div', { class: 'acct-card' },
-        h('div', { class: 'banner-strip', style: bannerStyle(agent) }),
-        h('div', { class: 'acct-top' }, avatar(agent, 64, agentStatus(agent))),
+      return h('div', { class: 'acct-card', 'data-agent': agent },
         h('div', { class: 'acct-body' },
-          h('div', { class: 'acct-name' }, displayName(agent), ' ', h('span', { class: `plan-badge ${ok ? 'ok' : 'bad'}` }, au.planLabel || stateText(au.state))),
+          h('div', { class: 'acct-name' }, avatar(agent, 28, agentStatus(agent)), displayName(agent), h('span', { class: `plan-badge ${ok ? 'ok' : 'bad'}` }, au.planLabel || stateText(au.state))),
           h('div', { class: 'kv' }, h('span', {}, '狀態'), h('span', {}, stateText(au.state))),
           au.email ? h('div', { class: 'kv' }, h('span', {}, '帳號'), h('span', {}, au.email)) : null,
           h('div', { class: 'kv' }, h('span', {}, a.cli + ' 版本'), h('span', {}, au.version || '-')),
@@ -3453,10 +3035,6 @@
       h('div', { class: 'page' }, h('div', { class: 'page-inner' },
         h('div', { class: 'muted', style: { fontSize: '14px', lineHeight: 1.5, marginBottom: '16px' } },
           'CCA 使用官方 Claude Code、Codex 與 Gemini CLI。Gemini 可開私訊、加入一般群組或多代理流程。Google 已於 2026-06-18 停止免費層與 Google One 個人帳號使用 Gemini CLI，需改用仍受支援的付費或工作區帳號；方案與額度依 Google 實際回報，每 60 秒更新。'),
-        window.CCAActivity?.render(S.usage.activity, { h, mode: S.activityMode, onMode: mode => {
-          S.activityMode = mode; renderAll();
-          requestAnimationFrame(() => document.querySelector('.activity-tab.sel')?.focus());
-        } }),
         usageCard(),
         h('div', { class: 'acct-grid' }, card('claude'), card('codex'), card('gemini')))));
   }
@@ -3590,7 +3168,8 @@
       openReview: (scope) => openReview(conv(), scope || 'task'),
       bypassDialog: () => bypassDialog(conv()), mcpDialog };
   }
-  window.CCABadges?.setup({ h, put, send, modal, toast });
+  // Screenshots and image artifacts live in the host's media folder (served as https://media.cca.app/).
+  const mediaUrl = (file) => /^(data:image\/|https?:)/.test(file || '') ? file : file ? 'https://media.cca.app/' + encodeURIComponent(file) : '';
   window.CCAPlatform?.setup({ h, send, modal, mediaUrl, toast, getModels: () => S.models, getLocal: () => S.local || {},
     getProfiles: () => S.settings.reviewProfiles || [] });
   window.CCACollaboration?.setup({ h, put, send, modal, icon, avatar, name: displayName, markdown: text => MD.render(text),

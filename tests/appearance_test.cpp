@@ -107,14 +107,15 @@ struct AppearanceTestAccess {
             return response["ok"].boolean();
         };
         check(c->adaptive["claude"]["model"].boolean(), "fresh conversation enables automatic model selection");
-        check(act(J({{"type", "theme.set"}, {"theme", "claude"}})), "save theme");
-        check(app.settings_["theme"].str() == "claude", "theme persisted in settings");
-        check(!act(J({{"type", "theme.set"}, {"theme", "../../unknown"}})) && app.settings_["theme"].str() == "claude",
-              "reject untrusted theme ID");
+        check(act(J({{"type", "theme.set"}, {"theme", "cca-light"}})), "save theme");
+        check(app.settings_["theme"].str() == "cca-light", "theme persisted in settings");
+        check(
+            !act(J({{"type", "theme.set"}, {"theme", "../../unknown"}})) && app.settings_["theme"].str() == "cca-light",
+            "reject untrusted theme ID");
         HANDLE locked = CreateFileW(util::joinPath(util::appDataDir(), L"settings.json").c_str(), GENERIC_READ, 0,
                                     nullptr, OPEN_EXISTING, 0, nullptr);
         check(locked != INVALID_HANDLE_VALUE, "lock persistence fixture");
-        check(!act(J({{"type", "theme.set"}, {"theme", "gemini"}})) && app.settings_["theme"].str() == "claude",
+        check(!act(J({{"type", "theme.set"}, {"theme", "cca"}})) && app.settings_["theme"].str() == "cca-light",
               "failed theme save restores memory");
         CloseHandle(locked);
         const auto previous = c->adaptive;
@@ -191,15 +192,16 @@ struct AppearanceTestAccess {
         pump();
         SetEnvironmentVariableW(L"CCA_TEST_ADAPTIVE", nullptr);
         App reload([](const std::string&) {});
-        check(reload.settings_["theme"].str() == "claude", "theme survives restart");
+        check(reload.settings_["theme"].str() == "cca-light", "theme survives restart");
         check(!reload.find("dm-claude")->adaptive["claude"]["model"].boolean(), "manual preference survives restart");
     }
 };
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "app-server") return fakeCodex();
-    check(std::string(CCA_VERSION) == "1.0.2-oss", "the ordinary line continues with 1.0.2-oss");
-    check(themeCatalogue().size() >= 16, "the catalogue holds the sixteen ordinary themes");
+    check(std::string(CCA_VERSION) == "1.0.2-luna", "the ordinary line continues with 1.0.2-luna");
+    check(!themeById("cca").isNull() && !themeById("cca-light").isNull(),
+          "the catalogue holds the dark and light looks");
     for (const auto& theme : themeCatalogue().items()) {
         check(!themeById(theme["id"].str()).isNull(), "catalogue theme roundtrip");
         check(themeColor(theme, "text") != 0 && themeColor(theme, "brand") != 0, "native theme colors parse");
@@ -266,12 +268,12 @@ int main(int argc, char** argv) {
         Json(Json::Array{J({{"value", "gpt-6-sol"}}), J({{"value", "gpt-6.1-sol"}}), J({{"value", "gpt-image-99"}})});
     check(chooseRoute("修復一個函式", generation, "", "", true, true)["model"].str() == "gpt-6.1-sol",
           "same family chooses newer numeric generation and excludes image models");
-    tui::setTheme("claude");
+    tui::setTheme("cca-light");
     auto ansi = tui::ansi(tui::line("hello\x1b]52;ignored"));
-    check(ansi.find("48;2;250;249;245") != std::string::npos, "light terminal includes paper background");
+    check(ansi.find("48;2;250;251;252") != std::string::npos, "light terminal includes paper background");
     check(ansi.find("\x1b]52") == std::string::npos, "themed terminal still strips control injection");
     tui::setTheme("cca");
-    check(tui::color::kBrand == 0xE9EDF1, "original terminal palette can be restored");
+    check(tui::color::kBrand == 0x6FB1FF, "original terminal palette can be restored");
     const auto rendered =
         tui::renderMessage(J({{"author", "claude"},
                               {"status", "done"},

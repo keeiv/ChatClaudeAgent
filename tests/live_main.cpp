@@ -181,8 +181,6 @@ int main(int argc, char** argv) {
             }
         });
         GuardRules rules;
-        rules.personaName = "本地甲";
-        rules.address = "指揮官";
         LocalReviewSetup setup;
         setup.review = true;
         setup.root = root;
@@ -191,7 +189,7 @@ int main(int argc, char** argv) {
         setup.think = localModelArg.find("qwen3") != std::string::npos;
         session->configure(
             model,
-            "你現在扮演「本地甲」，稱呼使用者為「指揮官」。你是唯讀審查員，只能用工具讀檔並提出建議。"
+            "你是唯讀審查員，只能用工具讀檔並提出建議。"
             "每條建議以「發現 1：」開頭，寫「位置：檔案:行號」和「原文：」（從 read_file 結果逐字複製），"
             "再寫問題、建議、信心。用台灣繁體中文回答。");
         session->setReview(setup);
@@ -227,16 +225,8 @@ int main(int argc, char** argv) {
         app.shutdown();
         return 0;
     }
-    if (mode == "persona") {
-        // Daily mode + persona + custom names, checked through what the (fake) CLI was started with.
-        ui(app, J({{"type", "profile.set"}, {"who", "claude"}, {"name", "撰寫測試員"}}));
-        ui(app, J({{"type", "profile.set"}, {"who", "codex"}, {"name", "審查測試員"}}));
-        ui(app, J({{"type", "persona.save"},
-                   {"assignTo", "claude"},
-                   {"persona", J({{"id", "test-writer"},
-                                  {"name", "撰寫測試員"},
-                                  {"agent", "claude"},
-                                  {"prompt", "以簡潔的繁體中文說明。"}})}}));
+    if (mode == "daily") {
+        // Daily mode, checked through what the (fake) CLI was started with.
         ui(app, J({{"type", "conv.settings"}, {"id", "dm-claude"}, {"settings", J({{"daily", true}})}}));
         pump(app, 300);
         size_t before = g_msgs.size();
@@ -258,9 +248,9 @@ int main(int argc, char** argv) {
         auto expect = [&](const char* what, bool ok) { std::printf("%s %s\n", ok ? "  ok  " : "  FAIL", what); bad += !ok; };
         expect("daily mode uses haiku", reply.find("model=haiku") != std::string::npos);
         expect("daily mode asks before edits", reply.find("permission=default") != std::string::npos);
-        expect("daily chats run without a project folder", reply.find("CCA\\daily") != std::string::npos);
-        expect("custom persona is in the system prompt", reply.find("# 角色設定：撰寫測試員") != std::string::npos);
-        expect("persona rules are attached", reply.find("扮演規則") != std::string::npos);
+        // The harness isolates the data folders, so the daily folder is a "daily" folder under them, never the project.
+        expect("daily chats run without a project folder",
+               reply.find("\\daily\n") != std::string::npos && reply.find(util::narrow(proj)) == std::string::npos);
         expect("daily note is attached", reply.find("# 日常模式") != std::string::npos);
         app.shutdown();
         std::printf("\n%s\n", bad ? "LIVE TEST FAILED" : "LIVE TEST OK");

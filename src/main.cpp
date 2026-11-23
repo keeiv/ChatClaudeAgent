@@ -96,25 +96,6 @@ std::wstring pickFolder(const std::wstring& initial) {
     return out;
 }
 
-std::wstring pickImage() {
-    ComPtr<IFileOpenDialog> dlg;
-    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return {};
-    COMDLG_FILTERSPEC types[] = {{L"圖片（PNG、JPG、GIF、WebP）", L"*.png;*.jpg;*.jpeg;*.gif;*.webp"}};
-    dlg->SetFileTypes(1, types);
-    DWORD opts = 0;
-    dlg->GetOptions(&opts);
-    dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);
-    dlg->SetTitle(L"選擇圖片");
-    if (dlg->Show(g_hwnd) != S_OK) return {};
-    ComPtr<IShellItem> item;
-    if (FAILED(dlg->GetResult(&item))) return {};
-    PWSTR path = nullptr;
-    std::wstring out;
-    if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) out = path;
-    CoTaskMemFree(path);
-    return out;
-}
-
 void windowAction(const std::string& action) {
     if (action == "min") {
         ShowWindow(g_hwnd, SW_MINIMIZE);
@@ -546,7 +527,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     g_app = std::make_unique<App>(sendToPage);
     g_app->windowAction = windowAction;
     g_app->pickFolder = pickFolder;
-    g_app->pickImage = pickImage;
     g_app->openExternal = [](const std::wstring& target) {
         ShellExecuteW(nullptr, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     };

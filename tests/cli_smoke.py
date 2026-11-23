@@ -21,7 +21,7 @@ def require(condition, message):
         raise AssertionError(message)
 
 
-def run_case(root, exe, name, script, conversation="claude", flow=False, usage=None, badges=None, setup=None):
+def run_case(root, exe, name, script, conversation="claude", flow=False, usage=None, setup=None):
     case = root / name
     project = case / "project"
     data = case / "data"
@@ -32,7 +32,6 @@ def run_case(root, exe, name, script, conversation="claude", flow=False, usage=N
     settings = {
         "claudePath": str(ROOT / "tests/fake_claude.cmd"),
         "codexPath": str(ROOT / "build/takeover_test.exe"),
-        "profiles": {"user": {"name": "指揮官"}},
         "humanize": {"enabled": True},
         # The fixture backends answer tersely and never read files; the compliance checks would send
         # every reply back. They are covered by build.bat test and takeover-test instead.
@@ -41,8 +40,6 @@ def run_case(root, exe, name, script, conversation="claude", flow=False, usage=N
     (data / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
     if usage is not None:
         (data / "usage.json").write_text(json.dumps(usage), encoding="utf-8")
-    if badges is not None:
-        (data / "badges.json").write_text(json.dumps(badges), encoding="utf-8")
     script_path = case / "input.txt"
     script_path.write_text(script, encoding="utf-8")
     env = dict(os.environ, CCA_DATA_DIR=str(data), CCA_TEST_CLI_FIXTURE="1")
@@ -145,22 +142,6 @@ key enter
 wait 200
 snap chats
 key esc
-type /name
-key enter
-wait 200
-key enter
-wait 200
-key ctrl-u
-type CLI 指揮官
-key enter
-wait 200
-type /persona
-key enter
-wait 200
-key enter
-wait 200
-snap personas
-key enter
 type /permission
 key enter
 wait 200
@@ -201,41 +182,9 @@ snap compact
 type /exit
 key enter
 """, "group")
-    require(saved["profiles"]["user"]["name"] == "CLI 指揮官", "name setting did not persist")
-    require(saved["persona"]["claude"] == "none", "persona selection did not persist")
     require(saved["visual"] == {"mode": "compact", "motion": False}, "visual settings did not persist")
     conversations = json.loads((settings_case / "data/conversations.json").read_text(encoding="utf-8"))
     require(any(c["kind"] == "group" and c["permission"] == "plan" for c in conversations), "permission selection did not persist")
-
-    _, saved, _ = run_case(root, exe, "gemini-profile", """until /help 15000
-wait 1200
-type /name
-key enter
-until 要改誰的名稱 3000
-key down
-key down
-key down
-key enter
-until 新的名稱 3000
-key ctrl-u
-type Gemini CLI examiner
-key enter
-wait 300
-type /persona
-key enter
-until 要設定誰的性格 3000
-key down
-key down
-key enter
-until Gemini 3000
-wait 250
-key enter
-wait 250
-type /exit
-key enter
-""", "group")
-    require(saved["profiles"]["gemini"]["name"] == "Gemini CLI examiner", "Gemini CLI name did not persist")
-    require(saved["persona"]["gemini"] == "none", "Gemini CLI persona choice did not persist")
 
     _, _, messages = run_case(root, exe, "group", """until /help 15000
 wait 1200
@@ -299,59 +248,19 @@ key enter
 """, "group", flow=True)
     require("transfer-next=" in (flow_case / "screen.vt.snaps").read_text(), "handoff animation was not captured")
 
-    activity_case, _, _ = run_case(root, exe, "activity", """until /help 15000
+    run_case(root, exe, "about", """until /help 15000
 wait 1200
-type /activity daily
-key enter
-until 每日輸入與輸出用量 10000
-snap daily
-type /activity weekly
-key enter
-until 截至該日期的近 7 日用量 10000
-snap weekly
-type /activity total
-key enter
-until 已保存紀錄截至該日期的累計用量 10000
-snap total
 type /about
 key enter
 until 技術規範與工具權限保持一致 10000
 snap about
 type /exit
 key enter
-""", usage={"2000-01-01": {"claude": {"input": 500}},
-            time.strftime("%Y-%m-%d"): {"api": {"input": 123, "output": 45}}})
-    require(b"668" in (activity_case / "screen.vt").read_bytes(), "activity lost a historical date or API usage")
-
-    badge_case, saved, _ = run_case(root, exe, "badges", """until /help 15000
-wait 1200
-type /badges
-key enter
-until CCA 原初 10000
-snap badges
-type /badges hide origin
-key enter
-wait 400
-type /badges first member
-key enter
-wait 400
-type /badges show origin
-key enter
-wait 400
-type /badges
-key enter
-until [展示] 成員 10000
-snap reordered
-type /exit
-key enter
-""", badges={"version": 1, "profile": "isolated-fixture",
-             "grants": ["developer", "community-developer", "origin", "familiar", "present", "pioneer"]})
-    require(saved["badgeDisplay"]["order"][0] == "member", "CLI did not persist badge order")
-    require(saved["badgeDisplay"]["hidden"] == [], "CLI did not restore hidden badge visibility")
+""")
 
     appearance_case, saved, _ = run_case(root, exe, "appearance", """until /help 15000
 wait 1200
-type /theme claude
+type /theme cca-light
 key enter
 wait 200
 type /auto on
@@ -367,12 +276,12 @@ snap appearance
 type /exit
 key enter
 """)
-    require(saved["theme"] == "claude", "CLI theme preference was not saved")
+    require(saved["theme"] == "cca-light", "CLI theme preference was not saved")
     conversations = json.loads((appearance_case / "data/conversations.json").read_text(encoding="utf-8"))
     dm = next(c for c in conversations if c["id"] == "dm-claude")
     require(dm["adaptive"]["claude"] == {"model": True, "effort": False}, "CLI auto dimensions were not independent")
     recording = (appearance_case / "screen.vt").read_bytes()
-    require(b"48;2;250;249;245" in recording, "light CLI did not paint paper background")
+    require(b"48;2;250;251;252" in recording, "light CLI did not paint paper background")
     require(not list((appearance_case / "data/messages").glob("*.json")), "routing preview invoked a model")
 
     queue_case, _, queued_messages = run_case(root, exe, "instruction-queue", """until /help 15000

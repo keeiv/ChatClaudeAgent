@@ -19,7 +19,11 @@ const { chromium } = require('playwright');
     await page.locator('.gate').waitFor({ state: 'hidden' });
     await page.evaluate(() => window.CCA_DEV.openConv('g1'));
     const dialog = () => page.getByRole('dialog').last();
-    const open = async name => { await page.locator('#panel').getByRole('button', { name, exact: true }).click(); };
+    const open = async name => {
+      const tab = page.locator('#panel').getByRole('tab', { name: '驗收與任務', exact: true });
+      if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
+      await page.locator('#panel').getByRole('button', { name, exact: true }).click();
+    };
     const close = async () => { await page.keyboard.press('Escape'); };
     await open('計畫與驗收');
     await page.getByRole('textbox', { name: '計畫標題' }).fill('可靠的訂單驗證');
@@ -84,7 +88,6 @@ const { chromium } = require('playwright');
     await page.screenshot({ path: 'build/ui-shots/workspace-after.png', animations: 'disabled' });
     await close();
 
-    await page.locator('#rail').getByRole('button', { name: '私人訊息', exact: true }).click();
     await page.locator('#sidebar').getByRole('button', { name: /^收件匣/ }).click();
     await page.getByText('指揮官收件匣', { exact: true }).waitFor();
     check(await page.locator('.inbox-item.needs-action').count() > 0, 'inbox shows plans requiring a decision across conversations');

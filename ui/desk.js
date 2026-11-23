@@ -3,16 +3,16 @@
 window.CCADesk = {
   create({ S, h, put, icon, send, modal, toast, schedule, conv, onLayout }) {
     S.desk = { contexts: {}, pending: {}, layout: null, update: {}, tab: 'context', body: null, convId: '' };
-    const defaults = { preset: 'collaboration', side: 240, panel: 340, font: 15, density: 'comfortable' };
+    const defaults = { preset: 'collaboration', side: 260, panel: 340, font: 15, density: 'comfortable' };
     const presets = {
-      reading: { ...defaults, preset: 'reading', side: 200, panel: 300, font: 17 },
+      reading: { ...defaults, preset: 'reading', side: 220, panel: 300, font: 17 },
       collaboration: defaults,
-      review: { ...defaults, preset: 'review', side: 200, panel: 460, font: 14, density: 'compact' },
+      review: { ...defaults, preset: 'review', side: 220, panel: 460, font: 14, density: 'compact' },
     };
     let sequence = 0;
     function layout(value) {
       const v = { ...defaults, ...(value || {}) };
-      v.side = Math.max(180, Math.min(380, Number(v.side) || 240));
+      v.side = Math.max(180, Math.min(380, Number(v.side) || 260));
       v.panel = Math.max(260, Math.min(520, Number(v.panel) || 340));
       v.font = Math.max(13, Math.min(19, Number(v.font) || 15));
       S.desk.layout = v;
@@ -24,8 +24,8 @@ window.CCADesk = {
       const width = window.innerWidth;
       const panel = document.querySelector('#panel');
       const docked = width >= 1200 && panel && !panel.classList.contains('collapsed');
-      const side = Math.max(180, Math.min(v.side, width - 72 - 400 - (docked ? 260 : 0)));
-      const right = Math.max(260, Math.min(v.panel, width - 72 - side - 400));
+      const side = Math.max(180, Math.min(v.side, width - 400 - (docked ? 260 : 0)));
+      const right = Math.max(260, Math.min(v.panel, width - side - 400));
       root.style.setProperty('--desk-side', side + 'px');
       root.style.setProperty('--desk-panel', right + 'px');
       root.style.setProperty('--desk-font', v.font + 'px');
@@ -180,9 +180,9 @@ window.CCADesk = {
     function switchDialog(choice) {
       const target = choice.edition ? choice.editionName : '普通版本';
       const text = choice.kind === 'return'
-        ? `回到普通版本 ${choice.version}。切換到特殊版本時保存的主題、性格、插件，以及各對話的日常模式、本地審查員、手動模型與思考程度、插件模式會還原；在特殊版本裡建立的對話與訊息都會保留。`
+        ? `回到普通版本 ${choice.version}。切換到特殊版本時保存的主題、插件，以及各對話的日常模式、本地審查員、手動模型與思考程度、插件模式會還原；在特殊版本裡建立的對話與訊息都會保留。`
         : !S.edition?.id
-          ? `${target} 是另一條產品路線，不是 CCA 的下一版。切換後，${target} 不支援的設定（主題、性格、插件，以及各對話的日常模式、本地審查員、手動模型與思考程度、插件模式）會保存在 editions\\ordinary-vault.json，回到 1.0.1-astra 以後的普通版本時還原。對話、訊息與專案不受影響；隨時可以退回普通版本。`
+          ? `${target} 是另一條產品路線，不是 CCA 的下一版。切換後，${target} 不支援的設定（主題、插件，以及各對話的日常模式、本地審查員、手動模型與思考程度、插件模式）會保存在 editions\\ordinary-vault.json，回到 1.0.1-astra 以後的普通版本時還原。對話、訊息與專案不受影響；隨時可以退回普通版本。`
           : `改用 ${target} ${choice.version}。先前保存的普通版本設定會繼續保留，回到普通版本時還原。`;
       modal({ title: choice.kind === 'return' ? '退回普通版本' : `切換到 ${target}`, body: h('p', {}, text),
         foot: close => [h('button', { class: 'btn ghost', onclick: close }, '取消'),

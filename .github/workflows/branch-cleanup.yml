@@ -1,0 +1,44 @@
+name: 清理已合併分支
+
+# 倉庫設定會在人手合併後刪除來源分支，但自動合併由 GITHUB_TOKEN 完成時 GitHub 不會刪，也不會觸發其他工作流程。
+# 這裡每小時（以及手動、人手合併時）把已合併拉取請求留下的分支刪掉：只看本倉庫的分支（fork 不算），
+# 只刪最新提交仍是合併當時那一個的分支（之後重用同名的新分支會保留），不碰 main，仍有開啟中拉取請求的分支也保留。
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: 刪除已合併的分支
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: 刪除已合併拉取請求留下的分支
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh pr list -R "$REPO" --state merged --limit 100 --json headRefName,headRefOid,isCrossRepository \
+            --jq '.[] | select(.isCrossRepository == false) | "\(.headRefName) \(.headRefOid)"' |
+          while read -r branch merged; do
+            [ -z "$branch" ] || [ "$branch" = "main" ] && continue
+            tip=$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null) || continue
+            [ "$tip" = "$merged" ] || continue
+            open=$(gh pr list -R "$REPO" --state open --head "$branch" --json number --jq 'length')
+            if [ "$open" = "0" ]; then
+              gh api -X DELETE "repos/$REPO/git/refs/heads/$branch" && echo "已刪除 $branch"
+            fi
+          done

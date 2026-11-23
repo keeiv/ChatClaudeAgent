@@ -98,9 +98,7 @@ LocalSession& App::localFor(Conversation& c, AgentKind k) {
         std::string id = c.id;
         slot = std::make_shared<LocalSession>(k, [this, id, k](const AgentEvent& ev) { onAgentEvent(id, k, ev); });
     }
-    std::string system = personaPrompt(k);
-    system += (system.empty() ? "" : "\n\n") + std::string(kReviewerRole);
-    slot->configure(localModel(k), system);
+    slot->configure(localModel(k), kReviewerRole);
     return *slot;
 }
 

@@ -66,4 +66,11 @@ GitHub 的執行環境有兩個限制，測試對它們的處理方式要看得�
 - 新增測試：原生目標加進 `tools/run_native_tests.py` 的 `TARGETS`，介面測試加進 `tests/run_browser_tests.py` 的 `TESTS`，極端情境加進 `tests/extreme_env.py` 的 `SCENARIOS`。
 - 新增工作流程：頂層 `permissions` 預設 `contents: read`，需要寫入權限的工作自己宣告；每個工作設 `timeout-minutes`；外部 Action 釘 SHA；不用 `pull_request_target`；不把 `github.event.*` 的標題、內文、分支名稱直接放進 `run:`（改用 `env:`）。`tools/check_workflows.py` 會擋。
 - 調整記憶體預算或逾時要在拉取請求裡寫出實測數字，不能只是為了讓紅燈變綠。
-- 建議的分支保護（需要倉庫管理者在 Settings → Branches 設定，CI 不會自己開）：要求 `CI 全部通過`、要求拉取請求、要求對話解決、不允許強制推送。
+- main 的分支保護（倉庫設定，不在工作流程裡）：只能經拉取請求合併、必要檢查 `CI 全部通過` 且分支須是最新、要求對話解決、線性歷史、不允許強制推送與刪除。倉庫只允許 squash 合併，合併後自動刪除來源分支。
+
+## 自動合併與發行
+
+- `auto-merge.yml`：擁有者從本倉庫分支開的拉取請求，一開啟就排定自動合併；分支保護會等到 `CI 全部通過` 綠燈才真的合併。fork 與機器人的拉取請求不會自動合併。
+- `cd.yml`：`src/version.hpp` 的版本號沒有對應的 `v<版本>` 標籤時，在 `windows-latest` 建置桌面版與 CLI、跑 `build.bat test`，用 `tools/make_release.py` 核對版本資源並產生發行資料夾，附上 SHA-256 與建置來源證明（`gh attestation verify <檔案> -R developer/ChatClaudeAgent` 可核對）後建立 GitHub Release。觸發來源是版本檔變更的 push、每天 04:23 UTC 的排程與手動執行；排程是因為 `GITHUB_TOKEN` 完成的自動合併不會再觸發 push 事件。已存在的標籤不重發。
+- `branch-cleanup.yml`：倉庫設定只在人手合併時刪除來源分支；`GITHUB_TOKEN` 完成的自動合併不會刪，所以這個工作流程每小時（以及手動、人手合併時）刪除已合併拉取請求留下的本倉庫分支；只刪最新提交仍是合併當時那一個的分支，不碰 main，也保留仍有開啟中拉取請求的分支。
+- `dependency-review.yml` 需要倉庫開啟相依圖（Settings → Code security 的 Dependabot alerts 會一併開啟），否則 API 回 403。
