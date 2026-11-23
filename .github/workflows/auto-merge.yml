@@ -1,0 +1,30 @@
+name: 自動合併
+
+# 倉庫擁有者從這個倉庫的分支開的拉取請求，一開啟就排定自動合併：main 的分支保護要求「CI 全部通過」，
+# 所以只有 CI 綠燈之後才會真的合併（squash）。合併後 GitHub 依倉庫設定刪除來源分支。
+# 外部貢獻者（fork）與機器人的拉取請求不會自動合併，仍由擁有者審閱後決定。
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  enable:
+    name: 排定自動合併
+    if: >-
+      github.event.pull_request.user.login == github.repository_owner &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: 檢查通過後以 squash 合併
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"

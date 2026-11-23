@@ -1,0 +1,138 @@
+name: CD
+
+# 版本號（src/version.hpp）變更並合併到 main 之後，在乾淨的 Windows 環境建置、跑單元測試，再發行 GitHub Release：
+# 帶版本號的桌面版與 CLI、可直接放進 %APPDATA%\CCA\installers 的發行資料夾（manifest.json 由 tools/make_release.py
+# 核對版本資源後產生）、SHA-256 與建置來源證明（artifact attestation）。
+# 已經存在的版本標籤一律不重發。自動合併以 GITHUB_TOKEN 完成時 GitHub 不會再觸發 push 事件，所以每天也檢查一次；
+# 也可以在 Actions 頁面手動執行。
+on:
+  push:
+    branches: [main]
+    paths: [src/version.hpp]
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-release
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: "1"
+
+jobs:
+  version:
+    name: 判斷是否需要發行
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      release: ${{ steps.read.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 讀取版本並查詢標籤
+        id: read
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^#define CCA_VERSION "\(.*\)"$/\1/p' src/version.hpp | tail -n 1)
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-?(oss|luna|terra|sol|astra)?$'; then
+            echo "src/version.hpp 的版本號格式不對：$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$version" > /dev/null 2>&1; then
+            echo "v$version 已經發行過，不重發。"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version 尚未發行。"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    name: 建置、測試並發行
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: 桌面版
+        run: cmd /c ".\build.bat"
+      - name: 終端機版
+        run: cmd /c ".\build.bat cli"
+      - name: 單元測試
+        run: cmd /c ".\build.bat test"
+      - name: 發行資料夾與帶版本號的檔案
+        shell: pwsh
+        run: |
+          python tools/make_release.py --desktop build\ChatClaudeAgent.exe --cli build\ChatClaudeAgent-CLI.exe `
+            --output "build\release\$env:VERSION" --notes "ChatClaudeAgent $env:VERSION（GitHub Release）"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force build\upload | Out-Null
+          Copy-Item build\ChatClaudeAgent.exe "build\upload\ChatClaudeAgent-$env:VERSION.exe"
+          Copy-Item build\ChatClaudeAgent-CLI.exe "build\upload\ChatClaudeAgent-CLI-$env:VERSION.exe"
+          Compress-Archive -Path "build\release\$env:VERSION" -DestinationPath "build\upload\ChatClaudeAgent-$env:VERSION-installers.zip"
+          Get-FileHash build\upload\* -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } |
+            Set-Content -Encoding utf8 build\upload\SHA256SUMS.txt
+          Get-Content build\upload\SHA256SUMS.txt
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            build/upload/*.exe
+            build/upload/*.zip
+      - name: 發行說明
+        shell: pwsh
+        run: |
+          $sums = Get-Content build\upload\SHA256SUMS.txt -Raw
+          $latest = ''
+          if (Test-Path docs\changelog.md) {
+            $paragraphs = (Get-Content docs\changelog.md -Raw -Encoding utf8) -split "\r?\n\r?\n"
+            $latest = ($paragraphs | Where-Object { $_.Trim() -and -not $_.StartsWith('#') } | Select-Object -First 1)
+          }
+          $notes = @(
+            "普通版本 $env:VERSION，由這個倉庫的提交 $env:GITHUB_SHA 在 GitHub Actions 建置，單元測試通過後發行。",
+            '',
+            $latest,
+            '',
+            "- ``ChatClaudeAgent-$env:VERSION.exe``：桌面版（需要 Microsoft Edge WebView2）",
+            "- ``ChatClaudeAgent-CLI-$env:VERSION.exe``：終端機版",
+            "- ``ChatClaudeAgent-$env:VERSION-installers.zip``：解壓縮到 ``%APPDATA%\CCA\installers``，CCA 會在軟體更新頁列出並核對後安裝",
+            '',
+            '每個檔案都附有建置來源證明，可用 ``gh attestation verify <檔案> -R ' + $env:GITHUB_REPOSITORY + '`` 核對。',
+            '',
+            'SHA-256',
+            '```',
+            $sums.Trim(),
+            '```'
+          ) -join "`n"
+          Set-Content -Path build\release-notes.md -Value $notes -Encoding utf8
+      - name: 建立 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release view "v$env:VERSION" 2>$null
+          if ($LASTEXITCODE -eq 0) { Write-Output "v$env:VERSION 已存在，不重發。"; exit 0 }
+          gh release create "v$env:VERSION" build\upload\* --target $env:GITHUB_SHA `
+            --title "ChatClaudeAgent $env:VERSION" --notes-file build\release-notes.md
