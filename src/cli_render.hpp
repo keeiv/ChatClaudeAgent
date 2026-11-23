@@ -13,18 +13,18 @@
 namespace tui {
 
 namespace color {
-inline uint32_t kBrand = 0xE9EDF1;  // CCA's white identity, matching the desktop UI.
-inline uint32_t kBrandDeep = 0x7CC4FF;
-inline uint32_t kClaude = 0xD97757;
-inline uint32_t kGpt = 0x19B88F;
-inline uint32_t kLocal1 = 0xEB6FB0;
-inline uint32_t kLocal2 = 0xA894F0;
-inline uint32_t kMuted = 0x8B949E;
-inline uint32_t kFaint = 0x5C636B;
-inline uint32_t kCode = 0xC9D4E0;
-inline uint32_t kOk = 0x4FBF7F;
-inline uint32_t kErr = 0xE5675E;
-inline uint32_t kWarn = 0xDDA94B;
+inline uint32_t kBrand = 0x6FB1FF;  // CCA's azure signal, matching the desktop UI.
+inline uint32_t kBrandDeep = 0x4F95E8;
+inline uint32_t kClaude = 0xEF9B78;
+inline uint32_t kGpt = 0x48CFA6;
+inline uint32_t kLocal1 = 0xF08AC3;
+inline uint32_t kLocal2 = 0xEDBA7A;
+inline uint32_t kMuted = 0x8796A4;
+inline uint32_t kFaint = 0x6C7B89;
+inline uint32_t kCode = 0xC8D2DB;
+inline uint32_t kOk = 0x5CCF8A;
+inline uint32_t kErr = 0xFF6B6B;
+inline uint32_t kWarn = 0xF0C050;
 }  // namespace color
 
 void setTheme(const std::string& id);

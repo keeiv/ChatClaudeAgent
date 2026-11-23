@@ -303,18 +303,19 @@ void setTheme(const std::string& id) {
     themeActive = !theme.isNull() && id != "cca";
     using namespace color;
     if (!themeActive) {
-        kBrand = 0xE9EDF1;
-        kBrandDeep = 0x7CC4FF;
-        kClaude = 0xD97757;
-        kGpt = 0x19B88F;
-        kLocal1 = 0xEB6FB0;
-        kLocal2 = 0xA894F0;
-        kMuted = 0x8B949E;
-        kFaint = 0x5C636B;
-        kCode = 0xC9D4E0;
-        kOk = 0x4FBF7F;
-        kErr = 0xE5675E;
-        kWarn = 0xDDA94B;
+        // The default look keeps the terminal's own background and uses the desktop's identity colors.
+        kBrand = 0x6FB1FF;
+        kBrandDeep = 0x4F95E8;
+        kClaude = 0xEF9B78;
+        kGpt = 0x48CFA6;
+        kLocal1 = 0xF08AC3;
+        kLocal2 = 0xEDBA7A;
+        kMuted = 0x8796A4;
+        kFaint = 0x6C7B89;
+        kCode = 0xC8D2DB;
+        kOk = 0x5CCF8A;
+        kErr = 0xFF6B6B;
+        kWarn = 0xF0C050;
         return;
     }
     themeForeground = themeColor(theme, "text");

@@ -12,6 +12,7 @@ const { chromium } = require('playwright');
     await page.waitForFunction(() => window.CCA_DEV);
     await page.locator('.gate').waitFor({ state: 'hidden' });
     await page.evaluate(() => window.CCA_DEV.openConv('g1'));
+    await page.locator('#panel').getByRole('tab', { name: '驗收與任務', exact: true }).click();
     await page.locator('#panel').getByRole('button', { name: '需求與驗收證據', exact: true }).click();
     await page.getByRole('textbox', { name: '證據名稱', exact: true }).fill('邊界測試證據');
     await page.getByRole('button', { name: '核對並執行', exact: true }).click();

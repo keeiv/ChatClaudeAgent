@@ -9,7 +9,7 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 - 桌面版 `ChatClaudeAgent.exe`：Win32 視窗加 WebView2，介面在 `ui/`，編進 exe 的資源。
 - CLI 版 `ChatClaudeAgent-CLI.exe`：在終端機裡畫同一套對話，不載入 WebView2，主打低記憶體。
 
-群組的流程：Claude 撰寫 → GPT 審查並直接修改 → Claude 複審 → 來回到雙方都沒有意見。本地模型（Ollama）最多兩位，只做唯讀審查。可配置的多代理流程另支援 Gemini CLI、API 與本地節點，依節點 ID 保留交接及執行狀態。Gemini 與其他原生代理共用個人資料及外部性格資料，有獨立私訊，也能在一般群組擔任第三位審查者；沒有模型目錄，一律用 CLI 預設模型。成員額度不足時跳過，全部成員都沒有額度時強制停止並記錄下一步。
+群組的流程：Claude 撰寫 → GPT 審查並直接修改 → Claude 複審 → 來回到雙方都沒有意見。本地模型（Ollama）最多兩位，只做唯讀審查。可配置的多代理流程另支援 Gemini CLI、API 與本地節點，依節點 ID 保留交接及執行狀態。Gemini 有獨立私訊，也能在一般群組擔任第三位審查者；沒有模型目錄，一律用 CLI 預設模型。成員額度不足時跳過，全部成員都沒有額度時強制停止並記錄下一步。
 
 ## 檔案地圖
 
@@ -32,16 +32,13 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 | `src/runtime.*`、`platform.cpp`、`tools/agent_runtime.py`、`ui/platform.js` | API／Ollama 工作程序、DPAPI 金鑰、MCP stdio、Docker 隔離、圖片產物與管理介面 |
 | `src/sandbox_mcp.*`、`tools/sandbox_mcp.py` | Claude 與 GPT 共用的 Docker 沙箱（MCP 伺服器）：啟動參數、Codex／Claude 的設定格式、角色說明 |
 | `src/claude_usage.*` | 可選的 Claude 額度輪詢；正式來源限 Anthropic HTTPS，測試使用隔離登入檔與本機 HTTP 替身 |
-| `src/profile.cpp`、`personas.cpp`、`humanize.cpp` | 名稱、本機性格預設檔、自訂風格與去 AI 化規則；角色內容不編入程式 |
-| `src/activity.*`、`ui/activity.js` | 桌面與 CLI 共用的日曆統計，以及近一年 Token 活動熱力圖 |
-| `src/badges.*`、`ui/badges.js`、`ui/badge_icons.js` | 本機個人徽章、六格展示與目錄；授予檔獨立於名稱，徽章不授予權限 |
+| `src/profile.cpp`、`humanize.cpp` | 成員名稱（固定為後端名稱）、設定預設值、截圖與圖片產物共用的 PNG 驗證、日常模式，以及去 AI 化規則 |
 | `src/gitflow.*`、`gitpanel.cpp`、`ui/git.js` | 版本控制面板：狀態解析、顏色分類、永遠不提交規則、提交前金鑰掃描、選檔提交、推送、快轉拉取、提交紀錄圖與自動同步 |
 | `src/desk.cpp`、`ui/desk.js` | 原子保存的待送指令、可觀測的上下文來源與桌面版面設定 |
 | `src/app_update.cpp`、`updater.*`、`tools/make_release.py` | 本機 `installers` 資料夾（自動建立）的發行清單或單一 EXE、遠端來源（未啟用）、自動更新排程、版本後綴（重大規範化）與獨立更新程式；不能對使用中的 CCA 測試替換 |
 | `src/task_analysis.cpp`、`routing.*`、`adaptive.cpp`、`ui/appearance.js` | 多因素任務輪廓、後端目錄限定的模型／思考程度自動選擇、手動固定與無模型呼叫的預覽 |
-| `config/themes.json`、`tools/make_themes.py`、`src/themes.*`、`ui/themes.css` | 桌面、CLI 及更新視窗共用的受信任主題目錄與原子保存；各主題取自來源的裝置集中在 `ui/themes.css` |
-| `src/navigation.cpp`、`ui/app.js` 的導覽段落 | 固定的群組圖標列、群組專屬側欄與主機確認的排序；私訊與群組分開 |
-| `src/model_dates.*`、`ui/profile_media.js` | 有來源的模型發布日、資料卡、頭像裁切；未知模型不猜日期 |
+| `config/themes.json`、`tools/make_themes.py`、`src/themes.*` | 暗色、亮色與 Fable 三款外觀的受信任目錄與原子保存；`ui/app.css` 的 `:root` 是基準 token，產生器推導其餘外觀並共用給桌面、CLI 及更新視窗 |
+| `src/navigation.cpp`、`ui/app.js` 的側欄段落 | 群組與私訊共用的對話列表、開啟中群組的工具，以及主機確認的群組排序 |
 | `src/rollback.cpp`、`snapshot.*` | 檢查點與回滾（每個對話一個影子 git 倉庫） |
 | `src/review.*` | 審查窗格：從檢查點到現在的差異（逐檔、逐段），還原單一檔案或單一段落，還原前先存檢查點 |
 | `src/main.cpp` | 桌面版的視窗和 WebView2 |
@@ -68,7 +65,7 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 .\build.bat haiku-sim-test     # Haiku 手機模擬的原生部分：解壓縮、APK、專案、DPAPI、橋接（不連外）
 .\build.bat haiku-window-test  # 真的開出模擬視窗並驅動橋接，存截圖（需要 WebView2 與已建置的 APK）
 .\build.bat edition-test    # 版本路線選項（真實執行檔）、保存與還原、CCA 插件
-.\build.bat appearance-test # 主題、模型路由、保存失敗及真實模擬 CLI 參數
+.\build.bat appearance-test # 外觀目錄、模型路由、保存失敗及真實模擬 CLI 參數
 .\build.bat gemini-test     # Gemini 真實子程序模擬協定，不使用模型額度
 .\build.bat git-test        # 真實 Git 裸遠端：選檔提交、規則鎖定、金鑰攔截、推送、自動拉取、本機 HTTP 遠端登入與額度自動接續
 node tests\git_browser.cjs   # 版本控制面板與自動接續設定；需 Playwright、Edge 與 UI 伺服器
@@ -80,10 +77,10 @@ node tests\message_bounds_browser.cjs # 真正 Edge 檢查長指令與本機連�
 node tests\guard_browser.cjs # 測試守門設定、指令對話框與還原訊息；需 Playwright、Edge 及 5220 埠 UI 伺服器
 node tests\mcp_pin_browser.cjs # MCP 工具釘住對話框；需 Playwright、Edge 及 5220 埠 UI 伺服器
 node tests\editions_browser.cjs # CCA 插件頁、更新頁的版本選項；需 Playwright、Edge 及 5220 埠 UI 伺服器
-node tests\appearance_browser.cjs # 十六款主題、各自的裝置、鍵盤、對比與自動選擇；需 5220 埠 UI 伺服器
+node tests\appearance_browser.cjs # 暗色與亮色的預覽、鍵盤、對比與自動選擇；需 5220 埠 UI 伺服器
 python tests\test_update_broker.py # 暫存 EXE 真正替換、啟動及失敗復原
 node tests\desk_browser.cjs # 工作台與版面；需 5219 埠 UI 伺服器
-.\build.bat profile-test    # 頭像交易、圖片驗證、日期與保存測試（自建隔離資料目錄）
+.\build.bat profile-test    # 圖片驗證、舊版設定檔相容、群組排序與用量保存（自建隔離資料目錄）
 .\build.bat pipeline-test   # 本機 HTTP、真實子程序協定、Git 與 DPAPI；不使用真實模型額度
 .\build.bat quality-test    # 原生證據來源、來源失效、驗收保護與真實工作程序 IPC
 python -m unittest discover -s tests -p test_quality_worker.py
@@ -96,10 +93,7 @@ python tests\test_sandbox_live.py # 模擬 CLI 檢查驗證程式的成功／失
 python tests\cli_smoke.py   # 真實 ConPTY 裡的 CLI 情境
 node tests\workflow_ui.cjs  # 流程圖 DOM 測試（需要的開發套件見 docs\workflow.md）
 node tests\desktop_smoke.cjs
-node tests\activity_browser.cjs # Token 活動與中性性格庫；需 Playwright、Edge 及 5208 埠 UI 伺服器
-node tests\badges_browser.cjs # 個人徽章；需 Playwright、Edge 及 5216 埠 UI 伺服器（可用 CCA_UI_URL 指定）
 node tests\group_navigation_browser.cjs # 群組導覽、拖曳與排序失敗；需 Playwright、Edge 及 5218 埠 UI 伺服器
-node tests\profile_media.cjs # 裁切幾何與模型日期；瀏覽器測試見 docs\profiles.md
 node tests\pipeline_models_browser.cjs # 模型下拉選單、API 自動載入與失敗重試；需要 Playwright 及介面開發伺服器
 python tests\test_check_style.py             # 風格工具的回歸測試，使用暫存檔與隔離 Git 倉庫
 .\build.bat memory-test     # 吃外部輸入的程式（JSON、diff、ZIP、專案檔）的洩漏量；先設 $env:CCA_SANITIZE=1 再跑就是 AddressSanitizer 版
@@ -136,10 +130,8 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - 模型與思考程度只能從後端回報目錄選擇；沒有能力資料時使用後端預設，不能猜 ID 或支援值。保留舊對話手動設定，模型／程度可獨立固定。多代理節點固定值、日常模式、獨立意見及 API／本地模型不被自動覆蓋。規則見 `docs/adaptive-routing.md`。
 - Gemini 帳號查詢須同時支援分離 core 與新版 bundled ESM SDK，只從所選安裝的入口圖載入，拒絕其他專案或上層套件。不得執行 CLI 主入口來猜登入，也不得為檢查帳號發送模型提示詞。
 - Gemini 使用官方 npm CLI 的 Google OAuth。免費層與 Google One 個人帳號已於 2026-06-18 停止支援 Gemini CLI；帳號檢查須用官方 CLI 的設定請求辨識 `UNSUPPORTED_CLIENT` 並顯示 `retired`，不能只看健康檢查就宣稱可用，額度查詢須綁定設定請求回傳的專案。移除 API 計費環境並強制 `oauth-personal`。方案只顯示 Google 回報名稱，額度缺值顯示未知，不用 Token 推算。沒有官方模型目錄時只允許預設模型。無介面計畫模式可能自動放寬權限，CCA 的 `plan` 不啟動 Gemini；`ask`／`edit` 不自動升成 YOLO。Gemini 工具輸出不含可驗證的 shell 結束碼，不能據此通過必要測試閘門。
-- 主題只接受目錄 ID，不接受任意 CSS。`config/themes.json` 與原生 token 經產生器共用至桌面、CLI 和更新視窗；預覽不保存，失敗須恢復已保存主題。變更目錄或原生 token 後執行 `tools/make_themes.py`。主題裝置只讀產生的 token（含 `--theme-a1`～`--theme-a6` 與字型堆疊），共用規則以 `:where()` 降權；只用 Windows 內建字型。
-- 頭像替換或移除，必須確認設定檔保存成功後才刪除舊圖。個人資料用 `persistProfile`、群組頭像用 `persistGroupAvatar`；保存失敗須保留舊參照與裁切內容。
-- 徽章持有資料只讀 `%APPDATA%\CCA\badges.json`，沒有此檔也一定有成員徽章。不得依顯示名稱授予開發者徽章；`badges.display` 只能調整已持有徽章的排序與隱藏，保存成功後才確認。徽章不是權限或線上身分認證。
-- 群組圖標順序由主機 `groupOrder()` 正規化，`groups.reorder` 必須包含當下所有且只含群組 ID，原子保存成功後才更新。訊息活動不能重排圖標；拖曳期間保留原生 DOM。刪除最後群組不自動建立替代群組，私訊保持可用。
+- 外觀只接受目錄 ID，不接受任意 CSS。`config/themes.json` 與原生 token 經產生器共用至桌面、CLI 和更新視窗；預覽不保存，失敗須恢復已保存外觀。原生程式讀的 token 必須是 `#rrggbb`，名稱不能改；變更 `:root` 或目錄後執行 `tools/make_themes.py`。只用 Windows 內建字型。
+- 群組順序由主機 `groupOrder()` 正規化，`groups.reorder` 必須包含當下所有且只含群組 ID，原子保存成功後才更新。訊息活動不能重排群組；拖曳期間保留原生 DOM。刪除最後群組不自動建立替代群組，私訊保持可用。
 - 對話資料在 `%APPDATA%\CCA`（`util::appDataDir()`）。桌面版和 CLI 用 `util::lockDataDir()` 互斥，不能同時寫。
 - 專案資料夾必須通過 `util::projectFolderProblem`：不能是磁碟根目錄、使用者資料夾本身或系統資料夾。Codex 的 Windows 沙箱會改專案資料夾的 ACL，曾經因為把整個使用者資料夾當工作區而出事；還原方式見 docs/purpose.md 的資料夾界線。
 - 子程序一律經 `process.cpp` 建立（放進 Job 物件，CCA 結束時整棵程序樹一起結束），用 `CREATE_NO_WINDOW`，不和 CLI 共用主控台。唯一例外是 `launchUpdateBroker`：經核對的更新程式必須在主程式關閉後繼續運作。宿主 Job 不允許分離時取消更新，不假裝成功。
@@ -153,7 +145,7 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - MCP 工具釘住：API 代理每次 `mcp_discover`／`mcp_call` 前重新取得工具清單，描述雜湊與核准時不同或沒釘住就阻擋；釘住只能經 `toolserver.pin`，主機以新清單核對使用者看到的雜湊，伺服器指令或參數變更即作廢所有釘住。釘住不證明工具行為安全。
 - 特殊版本（Haiku、Sonnet、Opus、Fable）是同一套原始碼以 `CCA_EDITION` 建置的另一條產品路線，版本號自成一列。更新只自動安裝同一路線的新版；切換路線一律由使用者在更新頁或 `/update switch`、`/update return` 確認。特殊版本第一次啟動時先把不支援的設定寫進 vault，寫入成功才停用它們；普通版本（1.0.1-astra 以後）啟動時還原並封存 vault。新增「特殊版本不支援」的設定時，要同時加進 `src/editions.cpp` 的清單。
 - Haiku 手機模擬不改 Haiku：只讀安裝資料夾裡、與發行清單核對過的 APK，編輯頁原封不動，橋接由 CCA 在載入前注入；預覽一律在沒有橋接的 WebView。視窗與橋接要和 Android 版同樣守規則（路徑只在專案內、金鑰不進頁面、模型請求只經固定的 HTTPS 端點）。為了讓它能在電腦上開啟而修改 `android/haiku` 是不允許的；差異（Windows 檔名、DPAPI）寫在模擬端。
-- CCA 插件只有資料：主題只能用既有形狀與內建主題的裝置、顏色須為 `#rrggbb` 且文字對比至少 4.5:1；模式只能設定白名單欄位，不得設定 bypass 或測試指令；指令不得蓋過內建指令。啟用時記下 `plugin.json` 的 SHA-256，檔案改動即停用。特殊版本不載入插件。
+- CCA 插件只有資料：配色只換顏色（`shape`、`base` 為相容舊檔而接受，不改變版面）、顏色須為 `#rrggbb` 且文字對比至少 4.5:1；模式只能設定白名單欄位，不得設定 bypass 或測試指令；指令不得蓋過內建指令。啟用時記下 `plugin.json` 的 SHA-256，檔案改動即停用。特殊版本不載入插件。
 - 多代理交接必須先保存檢查點與任務，再啟動下一位。不能只依模型說法判定修改或測試成功；審查結論須位於結尾，沒有主機取得的測試結束碼就不能通過必要測試閘門。
 - API Key 只走工作程序 stdin IPC 與 DPAPI 檔案，不進設定、提示詞或聊天。工具只開放專案內的相對路徑，拒絕連結、憑證及環境檔；本地代理沒有寫入、執行或 MCP 呼叫工具。
 - 驗收證據只能由主機工作程序的實際結果建立；須綁定來源與計畫版本。重現必須用相同案例取得舊版指定失敗、新版成功。一般測試不是作業系統沙箱；外部網站也不能只靠本機指紋聲稱已部署相同版本。
@@ -178,11 +170,9 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - 2 格縮排，單引號，有分號。沿用 `h(tag, props, ...children)` 建 DOM、`put()` 換內容、`icon()` 畫圖示，不引入框架或 npm 套件。
 - 介面狀態放在 `S`，畫面用 `renderXxx()` 重畫；每個從主機來的訊息在 `onMessage` 的 `switch` 處理。
 
-**CSS**：沿用 `ui/app.css` 開頭的 CSS 變數（`--claude`、`--codex`、`--signal`、`--text-muted`…），不要新增字體或寫死顏色。外觀照 [docs/visual-identity.md](docs/visual-identity.md)：切角板而不是圓角、白色主要按鈕、冰藍訊號色只用在焦點與進度、每位隊員固定一個識別色；不要加漸層、玻璃擬態或發光陰影。群組的設定（主刀、模型、權限、資料夾、本地審查員、來回上限、流程圖）放在頻道設定面板 `opsPanel`，不要再加回標題列。
+**CSS**：沿用 `ui/app.css` 開頭的 CSS 變數（`--signal`、`--brand`、`--claude`、`--text-muted`…），元件不寫死顏色、不新增字體。外觀照 [docs/visual-identity.md](docs/visual-identity.md)：三欄版面（對話列表、對話、分頁式檢視面板）、6／10 px 圓角、細線邊框、天藍只標主要動作、選取與焦點，每位成員固定一個識別色與一個畫出來的扁平頭像（成員色水滴加兩顆豎膠囊眼睛，使用者是星星）；不要加漸層、玻璃擬態、點陣或發光陰影，也不要加回伺服器列、成員欄、上傳頭像或徽章。群組的設定（主刀、模型、權限、資料夾、本地審查員、來回上限、流程圖）放在頻道設定面板 `opsPanel`，不要再加回標題列。
 
 **Python**：工具只用標準函式庫（需要圖片處理的產生器不在這個倉庫）；4 格縮排。
-
-**選用主題例外**：上述切角及石墨色規則適用於 CCA 原生主題。十五款選用主題集中寫在 `ui/themes.css`，可依各自來源使用圓角、紙色、圖樣，以及來源本身的漸層或光暈（Gemini 星芒、Sky 燭光、Tokyo Night 霓虹、萬聖節南瓜光暈），顏色只能從 token 讀取；不得在業務元件硬編配色。原生主題仍不用裝飾漸層或發光陰影。詳細規格及參考來源見 `docs/themes.md`。
 
 **文字**：介面、說明、文件都用台灣繁體中文。去 AI 化規則也適用於 CCA 自己：不寫「值得注意的是」「不僅……更……」這類套話，不在標題放 emoji，不堆形容詞，寫具體的檔名、數字和步驟。公開介紹不以私人性格設定或第三方作品作為產品功能；自訂風格不能影響技術規範。
 

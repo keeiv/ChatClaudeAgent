@@ -12,8 +12,8 @@ window.CCAAppearance = {
       if (!theme) return;
       const root = document.documentElement;
       for (const [key, value] of Object.entries(theme.tokens)) root.style.setProperty('--' + key, value);
-      // A plugin theme borrows the devices of the built-in theme it names as its base; otherwise only colors change.
-      root.dataset.theme = theme.plugin ? theme.base || 'plugin' : theme.id;
+      // Every look shares one layout; a plugin theme changes colors only.
+      root.dataset.theme = theme.plugin ? 'plugin' : theme.id;
       root.dataset.shape = theme.shape;
       root.dataset.scheme = theme.scheme;
       root.style.colorScheme = theme.scheme;
@@ -47,9 +47,9 @@ window.CCAAppearance = {
     }
     function themePage(body) {
       const current = S.settings.theme || 'cca', chosen = S.appearance.choice || current, list = catalogue();
-      body.append(h('h2', {}, '介面主題'), h('p', { class: 'hint' },
-        '主題調整介面材質、留白、控制項與配色。選擇後可先預覽，套用後保存在本機。'),
-      h('div', { class: 'theme-gallery', role: 'radiogroup', 'aria-label': '介面主題' },
+      body.append(h('h2', {}, '外觀'), h('p', { class: 'hint' },
+        '暗色與亮色共用同一套版面與成員顏色；啟用的 CCA 插件可以加入自己的配色。選擇後先預覽，按「套用」才保存在本機。'),
+      h('div', { class: 'theme-gallery', role: 'radiogroup', 'aria-label': '外觀' },
         list.map(theme => h('button', { class: 'theme-option' + (chosen === theme.id ? ' selected' : ''),
           type: 'button', disabled: !!S.appearance.pending, role: 'radio', 'aria-label': theme.name,
           tabIndex: chosen === theme.id ? 0 : -1, 'aria-checked': String(chosen === theme.id), 'data-theme-option': theme.id,
@@ -65,14 +65,14 @@ window.CCAAppearance = {
         h('span', { class: 'hint' }, theme.kicker), h('span', { class: 'theme-option-description' }, theme.description),
         theme.motif ? h('span', { class: 'theme-option-motif' }, theme.motif) : null))),
       h('div', { class: 'theme-apply' },
-        h('span', { class: 'hint', role: 'status' }, S.appearance.preview ? '預覽中 · 尚未保存' : '目前主題已保存'),
+        h('span', { class: 'hint', role: 'status' }, S.appearance.preview ? '預覽中，尚未保存' : '目前的外觀已保存'),
         h('button', { class: 'btn secondary', disabled: !S.appearance.preview || !!S.appearance.pending,
           onclick: () => { cancelPreview(); renderSettings(); } }, '取消預覽'),
         h('button', { class: 'btn primary', disabled: !!S.appearance.pending || chosen === current,
           onclick: () => {
             const token = 'theme-' + (++S.appearance.sequence); S.appearance.pending = token;
             send({ type: 'theme.set', theme: chosen, requestToken: token }); renderSettings();
-          } }, S.appearance.pending ? '保存中…' : '套用主題')));
+          } }, S.appearance.pending ? '保存中…' : '套用')));
     }
     function routingPage(body, c) {
       body.append(h('h2', {}, '自動模型與思考程度'), h('p', { class: 'hint' },

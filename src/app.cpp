@@ -7,13 +7,9 @@
 #include <cstdio>
 #include <thread>
 
-#include "activity.hpp"
-#include "badges.hpp"
 #include "diff.hpp"
 #include "editions.hpp"
 #include "humanize.hpp"
-#include "model_dates.hpp"
-#include "personas.hpp"
 #include "pipeline.hpp"
 #include "sandbox_mcp.hpp"
 #include "takeover.hpp"
@@ -82,8 +78,6 @@ const char* kDailyNote =
 
 App::App(SendFn send) : send_(std::move(send)) {
     load();
-    personaPresets_ = loadPersonaPresets(dataFile(L"persona-presets.json"), personaPresetProblem_);
-    badgeGrants_ = loadBadgeGrants(dataFile(L"badges.json"), badgeGrantProblem_);
     ensureProfileDefaults();
     ensureDefaults();
     editionTransition(editionId());
@@ -99,8 +93,6 @@ void App::shutdown() {
     lifetime_.reset();
     if (qualityWorker_) qualityWorker_->terminate();
     for (auto& worker : controls_) worker->shutdown();
-    removeMediaFile(pendingImage_["file"].str());
-    pendingImage_ = Json::object();
     for (auto& c : convs_) {
         if (c->worker) c->worker->shutdown();
         for (auto& session : c->pipelineGemini) session.second->shutdown();
@@ -179,7 +171,6 @@ void App::load() {
         }
         c->createdAt = m["createdAt"].i64();
         loadDesk(*c);
-        if (c->kind == "group" && isMediaName(m["avatar"].str())) c->avatar = m["avatar"].str();
         if (c->kind == "group") {
             c->task = loadTask(c->id);
             // CCA closed while the task ran: it is resumable, not silently "running".
@@ -242,7 +233,6 @@ bool App::saveConversations(const std::string& omit) {
                           for (const auto& l : c->localMembers) a.push(l);
                           return a;
                       }()},
-                     {"avatar", c->avatar},
                      {"createdAt", c->createdAt}}));
     }
     const bool ok = util::writeFileAtomic(dataFile(L"conversations.json"), list.dump());
@@ -365,7 +355,6 @@ Json App::convMeta(const Conversation& c) const {
                      for (const auto& l : c.localMembers) a.push(l);
                      return a;
                  }()},
-                {"avatar", c.avatar},
                 {"createdAt", c.createdAt}});
     for (auto it = c.messages.rbegin(); it != c.messages.rend(); ++it) {
         const Json& msg = *it;
@@ -456,7 +445,6 @@ void App::sendConvs() {
 }
 
 void App::sendBoot() {
-    usage_["activity"] = tokenActivity(usageHistory_, activityToday());
     Json items = Json::array();
     Json states = Json::array();
     for (const auto& c : convs_) {
@@ -467,21 +455,16 @@ void App::sendBoot() {
             {"version", kVersion},
             {"edition", J({{"id", editionId()}, {"name", editionName()}})},
             {"user", J({{"name", util::windowsUserName()}})},
-            {"personas", allPersonas()},
-            {"badges", badgeState()},
             {"convs", items},
             {"groupOrder", groupOrder()},
             {"states", states},
             {"settings", settings_},
-            {"modelDates", modelDateTable()},
-            {"modelDateAliases", modelDateAliases()},
             {"models", J({{"claude", claudeModels_}, {"codex", codexModels_}})},
             {"usage", usage_}}));
     sendAuth();
 }
 
 void App::sendUsage() {
-    usage_["activity"] = tokenActivity(usageHistory_, activityToday());
     send(J({{"type", "usage"}, {"usage", usage_}}));
 }
 
@@ -531,11 +514,6 @@ void App::tick() {
 GuardRules App::guardRulesFor(const Conversation& c, AgentKind k) const {
     GuardRules r;
     r.speaker = nameOf(k);
-    Json persona = findPersona(settings_["personas"], settings_["persona"][agentName(k)].str(), personaPresets_);
-    if (persona.isObject() && !util::trim(persona["prompt"].str()).empty()) {
-        r.personaName = persona["name"].str();
-        r.address = util::trim(persona["address"].str());
-    }
     r.checkTestClaims = !(c.daily && c.kind != "group");
     const GroupRun& g = c.group;
     if (!isLocal(k) && c.kind == "group" && g.active && g.current == agentName(k)) {
@@ -615,7 +593,7 @@ AgentConfig App::configFor(const Conversation& c, AgentKind k, bool routed) cons
         cfg.effort.clear();
         cfg.resumeId = c.geminiSession;
     }
-    std::string instr = personaPrompt(k);
+    std::string instr;
     auto add = [&](const std::string& part) {
         if (part.empty()) return;
         if (!instr.empty()) instr += "\n\n";
@@ -1479,8 +1457,6 @@ void App::onUiMessage(const std::string& text) {
         sendBoot();
         sendExtensions();
         checkGemini();
-        if (!personaPresetProblem_.empty()) toast("error", personaPresetProblem_);
-        if (!badgeGrantProblem_.empty()) toast("error", badgeGrantProblem_);
         if (!editionNotice_.empty()) toast("info", editionNotice_);
         editionNotice_.clear();
         if (claudeStatus_.state == "checking" || codexStatus_.state == "checking") runAuthCheck(true, true);
@@ -1537,7 +1513,7 @@ void App::onUiMessage(const std::string& text) {
     if (type == "settings.set") {
         // Only the two CLI paths come through here, and CCA later starts whatever they name,
         // so each must be empty (auto-detect) or an existing program file. Every other setting
-        // has its own validated message (profile.set, persona.*, daily.set, ...).
+        // has its own validated message (daily.set, humanize.set, ...).
         const Json& in = m["settings"];
         bool claude = false, codex = false, gemini = false;
         for (const char* key : {"claudePath", "codexPath", "geminiPath"}) {
@@ -1592,11 +1568,6 @@ void App::onUiMessage(const std::string& text) {
         pollClaudeUsage(true);
         return;
     }
-    if (type == "profile.set") { handleProfileSet(m); return; }
-    if (type == "badges.display") {
-        handleBadgeDisplay(m);
-        return;
-    }
     if (type == "rollback") { handleRollback(m); return; }
     if (type == "rollback.undo") { handleRollbackUndo(m); return; }
     if (type == "review.open") {
@@ -1612,14 +1583,6 @@ void App::onUiMessage(const std::string& text) {
     if (type == "local.cancel") { if (pulls_.count(m["model"].str())) *pulls_[m["model"].str()] = true; return; }
     if (type == "local.delete") { handleLocalDelete(m); return; }
     if (type == "local.set") { handleLocalSet(m); return; }
-    if (type == "profile.image") { handleProfileImage(m); return; }
-    if (type == "image.commit" || type == "image.cancel") {
-        handleImageAction(m);
-        return;
-    }
-    if (type == "persona.save") { handlePersonaSave(m); return; }
-    if (type == "persona.delete") { handlePersonaDelete(m); return; }
-    if (type == "persona.assign") { handlePersonaAssign(m); return; }
     if (type == "daily.set") { handleDailySet(m); return; }
     if (type == "humanize.set") { handleHumanizeSet(m); return; }
     if (type == "visual.set") {
@@ -1696,15 +1659,6 @@ void App::onUiMessage(const std::string& text) {
         return;
     }
     if (type == "conv.takeover") { handleTakeover(*c); return; }
-    if (type == "conv.image") {
-        beginImage("", "avatar", c->id);
-        return;
-    }
-    if (type == "conv.avatar.remove" && c->kind == "group") {
-        if (!persistGroupAvatar(*c, "")) toast("error", "無法儲存群組頭像設定，已保留原圖");
-        sendConvs();
-        return;
-    }
     if (type == "conv.open") {
         Json arr = Json::array();
         for (const auto& msg : c->messages) arr.push(msg);
@@ -1724,9 +1678,9 @@ void App::onUiMessage(const std::string& text) {
             toast("error", "群組正在工作，請先停止");
             return;
         }
-        // Commit the removal before deleting messages or the avatar it referenced.
+        // Commit the removal before deleting the messages it referenced.
         if (!saveConversations(c->id)) {
-            toast("error", "無法儲存群組變更，群組與頭像已保留");
+            toast("error", "無法儲存群組變更，群組已保留");
             return;
         }
         std::string id = c->id;
@@ -1735,7 +1689,6 @@ void App::onUiMessage(const std::string& text) {
         if (c->gemini) c->gemini->shutdown();
         DeleteFileW(messagesFile(id).c_str());
         deleteTask(id);
-        removeMediaFile(c->avatar);
         convs_.erase(std::remove_if(convs_.begin(), convs_.end(), [&](const auto& x) { return x->id == id; }),
                      convs_.end());
         ensureDefaults();

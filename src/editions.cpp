@@ -74,9 +74,8 @@ void App::editionTransition(const std::string& now) {
             const auto archived = util::joinPath(util::joinPath(util::appDataDir(), L"editions"),
                                                  util::widen("ordinary-vault-restored-" + util::newId() + ".json"));
             if (ok && MoveFileExW(vault.c_str(), archived.c_str(), MOVEFILE_WRITE_THROUGH)) {
-                editionNotice_ = "已從 " + saved["to"]["name"].str(previous) +
-                                 " 回到普通版本：還原了主題、性格、插件與 " + std::to_string(restored) +
-                                 " 個對話的模式設定。";
+                editionNotice_ = "已從 " + saved["to"]["name"].str(previous) + " 回到普通版本：還原了主題、插件與 " +
+                                 std::to_string(restored) + " 個對話的模式設定。";
             } else {
                 // Keep the vault and the old marker so the next start tries again; nothing was lost.
                 markerOk = false;

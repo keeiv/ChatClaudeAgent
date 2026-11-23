@@ -44,10 +44,10 @@ CLI 對應的指令：`/plugins` 列出插件與錯誤，`/plugins enable ID` �
 ```
 
 - 顏色一律是 `#rrggbb`；`text` 與 `muted` 對 `chat` 的對比必須至少 4.5:1，否則不能啟用。
-- `shape` 只能選 CCA 既有的形狀：`cut`、`soft`、`paper`、`round`、`editor`、`sticker`、`sky`、`tactical`、`signal`、`ribbon`、`pumpkin`、`slash`。
-- `base` 可指定一款內建選用主題（例如 `hunt`、`claude`、`blessing`），插件主題就沿用它的裝置（切角、區段標記、背景圖樣），只換顏色。沒有 `base` 時只改顏色與形狀。原生 `cca` 不能當 `base`。
+- `shape` 只接受下列值，供舊插件檔通過驗證：`cut`、`soft`、`paper`、`round`、`editor`、`sticker`、`sky`、`tactical`、`signal`、`ribbon`、`pumpkin`、`slash`。1.0.2-luna 起所有外觀共用同一套版面，`shape` 不再改變形狀。
+- `base` 曾用來借用內建選用主題的裝置；1.0.2-luna 移除了那些主題，這個欄位仍被接受但沒有作用。插件配色只換顏色。
 - `display`、`reading` 只能列出已安裝的字型名稱（英數字、空格、逗號、引號與連字號），不能放 `url()` 或其他 CSS。
-- 插件主題的 token 由 CCA 用與 `tools/make_themes.py` 相同的規則從 `palette` 算出；亮色主題的成員與狀態色會換成紙面上讀得清楚的版本。主題的 ID 是 `p.<插件ID>.<主題ID>`，在「介面主題」裡和內建主題一起出現，CLI 用 `/theme p.night-shift.ember` 套用。插件停用時改顯示 CCA 原生主題，選擇仍保存，重新啟用後恢復。
+- 插件主題的 token 由 CCA 用與 `tools/make_themes.py` 相同的規則從 `palette` 算出；亮色主題的成員與狀態色會換成紙面上讀得清楚的版本。主題的 ID 是 `p.<插件ID>.<主題ID>`，在「外觀」裡和內建外觀一起出現，CLI 用 `/theme p.night-shift.ember` 套用。插件停用時改顯示 CCA 暗色，選擇仍保存，重新啟用後恢復。
 
 ### 模式
 

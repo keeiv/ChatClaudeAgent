@@ -275,8 +275,7 @@ bool App::startPipelineAgent(Conversation& c, const std::string& text, std::stri
         if (error) *error = cfg.routing["reason"].str();
         return false;
     }
-    cfg.instructions =
-        personaPrompt(k) + "\n你參與可配置的多代理流程。以每則任務交接中的 agent_id、角色與驗收標準為準。";
+    cfg.instructions = "你參與可配置的多代理流程。以每則任務交接中的 agent_id、角色與驗收標準為準。";
     if (humanizeOn()) cfg.instructions += "\n" + humanizeInstructions(settings_["humanize"]["extra"].str());
     cfg.resumeId = c.task["sessions"][id].str();
     captureContext(c, id, cfg, text);

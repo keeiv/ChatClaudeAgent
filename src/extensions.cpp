@@ -106,7 +106,7 @@ Json themeFromPalette(const std::string& id, const Json& theme, const std::strin
         {"header", "text"},          {"text-muted", "muted"}, {"text-faint", "muted"},    {"header-2", "muted"},
         {"icon", "muted"},           {"icon-hover", "text"},  {"brand", "brand"},         {"brand-hover", "text"},
         {"signal", "signal"},        {"link", "signal"},      {"scroll-thumb", "line"},   {"gray-btn", "selected"},
-        {"gray-btn-hover", "hover"}, {"badge-ink", "text"},   {"commander", "signal"}};
+        {"gray-btn-hover", "hover"}, {"commander", "signal"}};
     for (const auto& [token, key] : same) tokens[token] = c(key);
     tokens["brand-ink"] = light ? std::string("#ffffff") : c("chat");
     tokens["signal-rgb"] = rgbOf(c("signal"));
@@ -120,17 +120,17 @@ Json themeFromPalette(const std::string& id, const Json& theme, const std::strin
     if (p.has("ink")) tokens["brand-ink"] = p["ink"];
     if (light) {
         // Member and status colors readable on paper, as the built-in light themes use.
-        const std::pair<const char*, const char*> paper[] = {{"gemini", "#245db1"},
-                                                             {"gemini-name", "#245db1"},
-                                                             {"gemini-rgb", "36, 93, 177"},
+        const std::pair<const char*, const char*> paper[] = {{"gemini", "#6b4fc8"},
+                                                             {"gemini-name", "#6b4fc8"},
+                                                             {"gemini-rgb", "107, 79, 200"},
                                                              {"claude", "#99482f"},
                                                              {"claude-name", "#99482f"},
                                                              {"codex", "#146948"},
                                                              {"codex-name", "#146948"},
                                                              {"local1", "#ad3975"},
                                                              {"local1-name", "#9a2864"},
-                                                             {"local2", "#7258a7"},
-                                                             {"local2-name", "#64439b"},
+                                                             {"local2", "#8a5a14"},
+                                                             {"local2-name", "#7a4e0f"},
                                                              {"green", "#277743"},
                                                              {"red", "#b73541"},
                                                              {"yellow", "#89601b"},
@@ -144,11 +144,7 @@ Json themeFromPalette(const std::string& id, const Json& theme, const std::strin
                                                              {"claude-rgb", "153, 72, 47"},
                                                              {"codex-rgb", "20, 105, 72"},
                                                              {"local1-rgb", "173, 57, 117"},
-                                                             {"local2-rgb", "114, 88, 167"},
-                                                             {"badge-copper", "#8d6033"},
-                                                             {"badge-teal", "#286c65"},
-                                                             {"badge-steel", "#506a82"},
-                                                             {"badge-blue", "#38648a"}};
+                                                             {"local2-rgb", "138, 90, 20"}};
         for (const auto& [token, value] : paper) tokens[token] = value;
     }
     return J({{"id", id},
@@ -211,11 +207,8 @@ Json scan(const std::wstring& dir) {
                 bool shape = false;
                 for (const char* s : kShapes) shape |= t["shape"].str() == s;
                 if (!shape) fail(label + "：shape 必須是 CCA 既有的形狀");
-                // Borrowing devices from a built-in theme is how a plugin changes more than colors, without CSS.
-                const Json base = t["base"].str().empty() ? Json() : themeById(t["base"].str());
-                if (!t["base"].str().empty() &&
-                    (base.isNull() || !base["edition"].str().empty() || t["base"].str() == "cca"))
-                    fail(label + "：base 必須是內建選用主題的 id");
+                // "base" named a built-in theme whose decorations a plugin could borrow; since 1.0.2-luna the built-in
+                // looks share one layout, so the field is accepted for old plugin files and has no effect.
                 bool colors = true;
                 for (const char* key : kPalette) colors &= hexColor(t["palette"][key]);
                 for (const auto& a : t["palette"]["accents"].items()) colors &= hexColor(a);

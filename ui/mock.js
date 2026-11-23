@@ -16,9 +16,9 @@ window.MockBackend = (() => {
     const plugins = flags.includes('ccaplugins') && !edition.id ? [demoPlugin] : [];
     const enabled = (settings.extensions?.enabled || {});
     const list = plugins.map(p => ({ ...p, enabled: enabled[p.id] === p.hash, changed: false,
-      themes: [{ id: 'p.night-shift.ember', name: '餘燼', kicker: '插件 · 夜班', scheme: 'dark', shape: 'slash', base: 'hunt', plugin: true,
+      themes: [{ id: 'p.night-shift.ember', name: '餘燼', kicker: '插件 · 夜班', scheme: 'dark', shape: 'slash', plugin: true,
         description: '借用追獵行動的裝置，換成餘燼橙。', motif: '', sources: [],
-        tokens: { ...(window.CCAThemeCatalog.find(t => t.id === 'hunt')?.tokens || {}), signal: '#ff8a3d', brand: '#d0602a', 'theme-a1': '#ff8a3d' } }] }));
+        tokens: { ...(window.CCAThemeCatalog.find(t => t.id === 'cca')?.tokens || {}), signal: '#ff8a3d', brand: '#d0602a', 'theme-a1': '#ff8a3d' } }] }));
     const on = list.filter(p => p.enabled);
     return { type: 'extensions', folder: 'C:\\Users\\you\\AppData\\Roaming\\CCA\\plugins', available: !edition.id, plugins: list,
       themes: on.flatMap(p => p.themes), modes: on.flatMap(p => p.modes), commands: on.flatMap(p => p.commands) };
@@ -77,22 +77,6 @@ window.MockBackend = (() => {
       session: { turns: 1, inputTokens: 96000, outputTokens: 4100 } },
     daily,
   };
-  // This fixture mirrors activity.cpp and never ships in the EXE.
-  const dateNow = new Date(now);
-  const todayKey = dateNow.getFullYear() + '-' + String(dateNow.getMonth() + 1).padStart(2, '0') + '-' + String(dateNow.getDate()).padStart(2, '0');
-  const dayMs = 86400000, end = Date.parse(todayKey + 'T00:00:00Z'), start = end - 364 * dayMs;
-  const totals = Object.fromEntries(Object.entries(daily).map(([key, agents]) => [key, Object.values(agents).reduce((sum, agent) => sum + agent.input + agent.output, 0)]));
-  let cumulative = 0, activeDays = 0;
-  const days = [];
-  for (let day = start; day <= end; day += dayMs) {
-    const key = new Date(day).toISOString().slice(0, 10), value = totals[key] || 0;
-    let weekly = 0;
-    for (let i = 0; i < 7; i++) weekly += totals[new Date(day - i * dayMs).toISOString().slice(0, 10)] || 0;
-    cumulative += value; if (value) activeDays++;
-    days.push({ date: key, daily: value, weekly, cumulative, recorded: Object.hasOwn(totals, key) });
-  }
-  usage.activity = { today: todayKey, start: days[0].date, first: Object.keys(daily).sort()[0] || '', days, total: cumulative, windowTotal: cumulative, activeDays };
-
   const diffCart = '@@ -12,9 +12,14 @@\n import { Item } from "./item";\n+import { DiscountCode, applyDiscount } from "./discount";\n \n export class Cart {\n   private items: Item[] = [];\n+  private code?: DiscountCode;\n \n-  total(): number {\n-    return this.items.reduce((s, i) => s + i.price * i.qty, 0);\n+  subtotal(): number {\n+    return this.items.reduce((s, i) => s + i.price * i.qty, 0);\n+  }\n+\n+  total(): number {\n+    return applyDiscount(this.subtotal(), this.code);\n   }\n';
   const diffDiscount = '@@ -18,12 +18,15 @@ export function applyDiscount(amount: number, code?: DiscountCode): number {\n   if (!code) return amount;\n-  if (code.expiresAt < Date.now()) return amount;\n+  if (code.expiresAt <= Date.now()) return amount;\n   if (code.kind === "percent") {\n-    return amount * (1 - code.value / 100);\n+    const pct = Math.min(Math.max(code.value, 0), 100);\n+    return Math.round(amount * (1 - pct / 100));\n   }\n-  return amount - code.value;\n+  return Math.max(0, amount - code.value);\n }\n';
 
@@ -201,90 +185,20 @@ window.MockBackend = (() => {
     codex: { state: 'missing', message: '找不到 Codex CLI。' },
   };
 
-  // New installations start without characters or assignments.
-  const personas = [];
   const settings = { toolServers: flags.includes('toolpin') ? [{ id: 'docs', name: 'docs', command: 'docs-server.exe', args: [], allowedTools: ['search', 'read_page'], enabled: true, approved: true, pins: {} }] : [],
-    lastConv: 'g1', persona: { claude: 'none', codex: 'none', gemini: 'none', local1: 'none', local2: 'none' }, daily: {}, humanize: { enabled: true, extra: '' },
+    lastConv: 'g1', daily: {}, humanize: { enabled: true, extra: '' },
     reviewProfiles: ['security', 'performance', 'tests', 'compatibility'].map((id, i) => ({ id,
       name: ['安全', '效能', '測試', '相容性'][i], text: '模擬審查規則：附上檔案、觸發條件與驗證方式。' })),
     visual: { mode: 'auto', motion: true },
-    locals: { local1: { model: 'qwen3:14b', enabled: true }, local2: { model: 'qwen3:14b', enabled: true } },
-    profiles: { user: {}, gemini: {}, claude: flags.includes('named') ? { name: '撰寫者', bannerColor: '#9b84ec' } : {}, codex: flags.includes('named') ? { name: '審查者', bannerColor: '#4f7bd8' } : {} } };
-  const badgeCatalog = [
-    ['developer', 'CCA 開發者', '參與 CCA 核心設計與開發。'],
-    ['community-developer', '社群開發者', '為 CCA 提供程式、工具或整合貢獻。'],
-    ['origin', 'CCA 原初', '紀念最初的橘綠交環圖標。'],
-    ['familiar', 'CCA 熟識', '紀念 1.0.0 以前的三段式 C 與圓點。'],
-    ['present', 'CCA 今時', '紀念 1.0.0 的相向銜接圖標。'],
-    ['pioneer', '先鋒支持者', '紀念早期測試、回饋與支持。'],
-    ['member', '成員', 'CCA 使用者的基本徽章。'],
-  ].map(([id, name, description]) => ({ id, name, description,
-    criteria: id === 'member' ? '所有安裝內建，無須登入或申請。' : '由本機授予資料指定。' }));
-  const badgeOwned = flags.includes('badges') ? badgeCatalog.map(b => b.id) : ['member'];
-  const badgeState = () => {
-    const order = settings.badgeDisplay?.order || [...badgeOwned], hidden = settings.badgeDisplay?.hidden || [];
-    return { catalog: badgeCatalog, owned: badgeOwned, order, hidden, display: order.filter(id => !hidden.includes(id)).slice(0, 6), scope: 'local' };
-  };
+    locals: { local1: { model: 'qwen3:14b', enabled: true }, local2: { model: 'qwen3:14b', enabled: true } } };
   const groupOrder = () => {
     const remaining = new Set(convs.filter(c => c.kind === 'group').map(c => c.id)), order = [];
     for (const id of settings.groupOrder || []) if (remaining.delete(id)) order.push(id);
     return order.concat([...remaining]);
   };
   const convsOut = () => emit({ type: 'convs', items: convs.map(meta), groupOrder: groupOrder() });
-  const settingsOut = () => emit({ type: 'settings', settings: JSON.parse(JSON.stringify(settings)), badges: badgeState(), groupOrder: groupOrder(), personas: [...personas, ...(settings.personas || [])],
+  const settingsOut = () => emit({ type: 'settings', settings: JSON.parse(JSON.stringify(settings)), groupOrder: groupOrder(),
     humanizeRules: '# 去 AI 化（強制）\n使用者開啟了去 AI 化……（模擬資料）' });
-  const modelDates = [
-    { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', date: '2026-09-15', source: 'Anthropic', url: 'https://www.anthropic.com/claude-fable-and-mythos-5-1' },
-    { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', date: '2026-09-22', source: 'Anthropic', url: 'https://www.anthropic.com/claude-opus-5-5' },
-    { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', date: '2026-09-28', source: 'Anthropic', url: 'https://www.anthropic.com/claude-sonnet-5-5' },
-    { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', date: '2026-10-07', source: 'Anthropic', url: 'https://www.anthropic.com/news/models' },
-    ...[
-      ['gpt-5.6-sol', 'GPT-5.6 Sol', '2026-07-09'], ['gpt-5.6-terra', 'GPT-5.6 Terra', '2026-07-09'],
-      ['gpt-5.6-luna', 'GPT-5.6 Luna', '2026-07-09'], ['gpt-6-astra', 'GPT-6 Astra', '2026-09-03'],
-      ['gpt-6-sol', 'GPT-6 Sol', '2026-09-22'], ['gpt-6-luna', 'GPT-6 Luna', '2026-09-22'],
-    ].map(([id, name, date]) => ({ id, name, date, source: 'OpenAI', url: 'https://developers.openai.com/api/docs/changelog' })),
-    { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', date: '2026-09-29', source: 'OpenAI', url: 'https://developers.openai.com/api/docs/changelog' },
-    { id: 'qwen3', name: 'Qwen3', date: '2025-04-29', source: 'Qwen', url: 'https://qwenlm.github.io/blog/qwen3/' },
-    { id: 'llama3.1', name: 'Llama 3.1', date: '2024-07-23', source: 'Meta', url: 'https://ai.meta.com/blog/meta-llama-3-1/' },
-    { id: 'qwen2.5-coder:7b', name: 'Qwen2.5-Coder 1.5B / 7B', date: '2024-09-19', source: 'Qwen', url: 'https://qwenlm.github.io/blog/qwen2.5-coder/' },
-    { id: 'qwen2.5-coder:14b', name: 'Qwen2.5-Coder 0.5B / 3B / 14B / 32B', date: '2024-11-12', source: 'Qwen', url: 'https://qwenlm.github.io/blog/qwen2.5-coder-family/' },
-    { id: 'dolphin3', name: 'Dolphin 3.0 Llama 3.1 8B', date: '2024-12-29', source: '作者模型庫（上傳日）', url: 'https://huggingface.co/api/models/dphn/Dolphin3.0-Llama3.1-8B' },
-  ];
-  const modelDateAliases = { opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5', haiku: 'claude-haiku-5-5', fable: 'claude-fable-5-1',
-    'qwen2.5-coder:1.5b': 'qwen2.5-coder:7b', 'qwen2.5-coder:0.5b': 'qwen2.5-coder:14b', 'qwen2.5-coder:3b': 'qwen2.5-coder:14b', 'qwen2.5-coder:32b': 'qwen2.5-coder:14b' };
-  let pendingImage = null;
-  function pickMockImage(message) {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = 'image/png,image/jpeg,image/gif,image/webp'; input.hidden = true;
-    const dispose = () => input.remove();
-    input.addEventListener('cancel', dispose);
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      dispose();
-      if (!file) return;
-      if (file.size > 10 * 1024 * 1024) { emit({ type: 'toast', level: 'error', text: '圖片太大了，請選 10 MB 以內的檔案' }); return; }
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (message.kind === 'banner') {
-          settings.profiles[message.who].banner = reader.result; settingsOut(); return;
-        }
-        pendingImage = { ...message, token: id() };
-        emit({ type: 'image.crop', token: pendingImage.token, file: reader.result, who: message.who, convId: message.id || '' });
-      };
-      reader.onerror = () => emit({ type: 'toast', level: 'error', text: '讀不到這張圖片' });
-      reader.readAsDataURL(file);
-    });
-    document.body.append(input); input.click();
-  }
-  function fakeImage(kind, seed) {
-    const c = document.createElement('canvas');
-    c.width = kind === 'banner' ? 600 : 256; c.height = kind === 'banner' ? 240 : 256;
-    const g = c.getContext('2d');
-    const colors = ['#2b2d31', '#5865f2', '#d97757', '#10a37f', '#eb459e'];
-    for (let i = 0; i < 6; i++) { g.fillStyle = colors[(i + seed) % colors.length]; g.fillRect(i * c.width / 6, 0, c.width / 6, c.height); }
-    return c.toDataURL('image/png');
-  }
-
   const meta = (c) => {
     const list = histories[c.id] || [];
     const last = [...list].reverse().find((m) => m.author !== 'system');
@@ -327,7 +241,7 @@ window.MockBackend = (() => {
       const nodes = c.pipeline.nodes.map((n, index) => {
         const agent = n.backend, current = st.task?.cursor === index;
         const status = current && st.typing.includes(agent) ? st.thinking[agent] ? 'thinking' : 'writing' : 'waiting';
-        return { id: 'pipeline:' + n.id, agent, name: n.name, profile: settings.profiles[agent]?.name,
+        return { id: 'pipeline:' + n.id, agent, name: n.name, profile: ({ claude: 'Claude', codex: 'GPT', gemini: 'Gemini' })[agent],
           role: ({ write: '撰寫', review: '審查', verify: '驗證' })[n.role] || n.role,
           model: n.model, status, label: ({ thinking: '思考中', writing: '處理中', waiting: '待命' })[status] };
       });
@@ -790,8 +704,7 @@ window.MockBackend = (() => {
         later(50, () => {
           for (const cid of Object.keys(states)) states[cid].workflow = projectFlow(cid);
           emit({ type: 'boot', version: edition.id ? '0.0.1' : '1.0.0-luna', edition, user: { name: 'Finn' }, convs: convs.map(meta), states: Object.values(states),
-            settings: { ...settings, lastConv: flags.includes('dm') ? 'dm-claude' : 'g1' }, groupOrder: groupOrder(), badges: badgeState(), personas, models, usage,
-            modelDates, modelDateAliases });
+            settings: { ...settings, lastConv: flags.includes('dm') ? 'dm-claude' : 'g1' }, groupOrder: groupOrder(), models, usage });
           extensionsOut();
           emit({ type: 'auth', ok: false, claude: { state: 'checking' }, codex: { state: 'checking' } });
           later(700, () => emit(flags.includes('gate') ? authGate : authOk));
@@ -803,23 +716,13 @@ window.MockBackend = (() => {
             if (flags.includes('bypass')) dev.bypassDialog();
             if (flags.includes('mcp')) dev.mcpDialog();
             if (flags.includes('help')) dev.showHelp();
-            if (flags.includes('demo')) {
-              // Pretend the user picked names and pictures, so every place that shows them can be checked.
-              receive({ type: 'profile.set', who: 'claude', name: '撰寫者' });
-              receive({ type: 'profile.image', who: 'claude', kind: 'avatar' });
-              receive({ type: 'profile.set', who: 'codex', name: '審查者', bannerColor: '#4f7bd8' });
-              receive({ type: 'profile.image', who: 'user', kind: 'avatar' });
-              receive({ type: 'profile.image', who: 'claude', kind: 'banner' });
-            }
             if (flags.includes('dailyon')) {
               const c = convs.find((x) => x.id === 'dm-claude');
               c.daily = true;
               convsOut();
             }
             if (flags.includes('picker')) setTimeout(() => dev.openModelPicker(flags.includes('gpt') ? 'codex' : 'claude'), 2500);
-            if (flags.includes('settings')) dev.openSettings('me');
-            if (flags.includes('sclaude')) dev.openSettings('claude');
-            if (flags.includes('spersonas')) dev.openSettings('personas');
+            if (flags.includes('settings')) dev.openSettings('advanced');
             if (flags.includes('sdaily')) dev.openSettings('daily');
             if (flags.includes('shumanize')) dev.openSettings('humanize');
             if (flags.includes('slocal')) dev.openSettings('local');
@@ -1021,66 +924,6 @@ window.MockBackend = (() => {
         break;
       case 'local.set':
         Object.assign(settings.locals[m.slot], 'model' in m ? { model: m.model } : {}, 'enabled' in m ? { enabled: m.enabled } : {});
-        settingsOut();
-        break;
-      case 'badges.display': {
-        const valid = Array.isArray(m.order) && Array.isArray(m.hidden) && m.order.length === badgeOwned.length &&
-          [m.order, m.hidden].every(list => new Set(list).size === list.length && list.every(id => badgeOwned.includes(id)));
-        if (valid && !flags.includes('badge-fail')) {
-          settings.badgeDisplay = { order: [...m.order], hidden: [...m.hidden] };
-          settingsOut();
-        }
-        emit({ type: 'badges.result', requestToken: m.requestToken, ok: valid && !flags.includes('badge-fail'),
-          error: '徽章顯示設定未能儲存，原設定已保留。' });
-        break;
-      }
-      case 'profile.set': {
-        const p = settings.profiles[m.who] = settings.profiles[m.who] || {};
-        for (const k of ['name', 'bannerColor', 'joinedAt']) if (k in m) { if (m[k] === null) delete p[k]; else p[k] = m[k]; }
-        for (const k of ['avatar', 'banner']) if (k in m && m[k] === null) delete p[k];
-        settingsOut();
-        break;
-      }
-      case 'profile.image':
-        if (flags.includes('demo')) { settings.profiles[m.who][m.kind] = fakeImage(m.kind, seq++); settingsOut(); }
-        else pickMockImage(m);
-        break;
-      case 'conv.image':
-        pickMockImage(m);
-        break;
-      case 'conv.avatar.remove': {
-        const c = convs.find(x => x.id === m.id);
-        if (c) { c.avatar = ''; convsOut(); }
-        break;
-      }
-      case 'image.cancel':
-        if (pendingImage?.token === m.token) pendingImage = null;
-        break;
-      case 'image.commit':
-        if (pendingImage?.token !== m.token) break;
-        if (pendingImage.type === 'conv.image') {
-          const c = convs.find(x => x.id === pendingImage.id);
-          if (c) { c.avatar = m.data; convsOut(); }
-        } else { settings.profiles[pendingImage.who].avatar = m.data; settingsOut(); }
-        pendingImage = null;
-        emit({ type: 'image.result', token: m.token, ok: true });
-        break;
-      case 'persona.assign':
-        settings.persona[m.agent] = m.id;
-        if (m.rename) { const p = [...personas, ...(settings.personas || [])].find((x) => x.id === m.id); if (p) settings.profiles[m.agent].name = p.name; }
-        settingsOut();
-        break;
-      case 'persona.save': {
-        settings.personas = settings.personas || [];
-        const p = { ...m.persona, id: m.persona.id || 'p-' + Date.now() };
-        settings.personas = settings.personas.filter((x) => x.id !== p.id).concat([p]);
-        if (m.assignTo) settings.persona[m.assignTo] = p.id;
-        settingsOut();
-        break;
-      }
-      case 'persona.delete':
-        settings.personas = (settings.personas || []).filter((x) => x.id !== m.id);
-        for (const agent of ['claude', 'codex', 'gemini', 'local1', 'local2']) if (settings.persona[agent] === m.id) settings.persona[agent] = 'none';
         settingsOut();
         break;
       case 'daily.set':

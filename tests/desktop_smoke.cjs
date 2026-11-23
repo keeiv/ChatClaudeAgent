@@ -43,7 +43,7 @@ const env = {
   matchMedia: () => ({ matches: false, addEventListener: (_, fn) => motionListeners.add(fn), removeEventListener: (_, fn) => motionListeners.delete(fn) }),
 };
 vm.createContext(env);
-for (const file of ['icons.js', 'md.js', 'workflow.js', 'profile_media.js', 'platform.js', 'collaboration.js', 'quality.js', 'activity.js', 'desk.js', 'git.js', 'theme_catalog.js', 'appearance.js', 'extensions.js', 'mock.js']) {
+for (const file of ['icons.js', 'md.js', 'workflow.js', 'platform.js', 'collaboration.js', 'quality.js', 'desk.js', 'git.js', 'theme_catalog.js', 'appearance.js', 'extensions.js', 'mock.js']) {
   vm.runInContext(fs.readFileSync('ui/' + file, 'utf8'), env, { filename: file });
   for (const key of ['Icons', 'MD', 'CCAWorkflow']) if (window[key]) env[key] = window[key];
 }

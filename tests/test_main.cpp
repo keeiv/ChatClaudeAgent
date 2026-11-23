@@ -5,7 +5,6 @@
 #include <string>
 
 #include <windows.h>
-#include "activity.hpp"
 #include "agent.hpp"
 #include "app.hpp"
 #include "claude_agent.hpp"
@@ -19,7 +18,6 @@
 #include "humanize.hpp"
 #include "json.hpp"
 #include "local_tools.hpp"
-#include "personas.hpp"
 #include "process.hpp"
 #include "review.hpp"
 #include "sandbox_mcp.hpp"
@@ -200,74 +198,6 @@ static void testProjectFolders() {
     CHECK(!util::projectFolderProblem(L"").empty());
     CHECK(util::projectFolderProblem(home + L"\\projects\\shop-api").empty());
     CHECK(util::projectFolderProblem(util::exeDir()).empty());
-}
-
-static void testPersonas() {
-    std::string error;
-    Json input = Json::array(), list;
-    input.push(J({{"id", "reviewer"},
-                  {"name", "審查員"},
-                  {"agent", "local"},
-                  {"prompt", "說明保持簡潔。"},
-                  {"address", "使用者"}}));
-    CHECK(parsePersonaPack(input, list, error));
-    CHECK_EQ(list.size(), (size_t)1);
-    CHECK_EQ(findPersona(Json::array(), "reviewer", list)["name"].str(), std::string("審查員"));
-    CHECK(findPersona(Json::array(), "reviewer").isNull());
-    CHECK(findPersona(Json::array(), "none").isNull());
-    CHECK(findPersona(Json::array(), "missing").isNull());
-    std::string text = personaInstructions(list.at(0));
-    CHECK(text.find("# 角色設定：審查員") == 0);
-    CHECK(text.find("稱呼使用者為「使用者」") != std::string::npos);
-    // The role never outranks CCA's protocol or code quality.
-    CHECK(text.find("VERDICT") != std::string::npos);
-    CHECK(text.find("優先於角色設定") != std::string::npos);
-
-    Json custom = Json::array();
-    custom.push(J({{"id", "p-1"}, {"name", "老師"}, {"prompt", "你是耐心的老師。"}}));
-    CHECK_EQ(findPersona(custom, "p-1")["name"].str(), std::string("老師"));
-    CHECK(personaInstructions(findPersona(custom, "p-1")).find("耐心的老師") != std::string::npos);
-    CHECK(personaInstructions(Json()).empty());
-    CHECK(personaInstructions(J({{"name", "空"}, {"prompt", "  "}})).empty());
-    custom.push(J({{"id", "reviewer"}, {"name", "自訂版本"}, {"prompt", "自訂"}}));
-    CHECK_EQ(findPersona(custom, "reviewer", list)["name"].str(), std::string("自訂版本"));
-    input.push(input.at(0));
-    CHECK(!parsePersonaPack(input, list, error) && list.size() == 0 && !error.empty());
-    input.items().pop_back();
-    input.at(0)["id"] = "none";
-    CHECK(!parsePersonaPack(input, list, error));
-    input.at(0)["id"] = "valid";
-    input.at(0)["prompt"] = std::string(12001, 'x');
-    CHECK(!parsePersonaPack(input, list, error));
-    CHECK(!parsePersonaPack(Json::object(), list, error));
-}
-
-static void testActivity() {
-    Json history = Json::parse(R"({
-        "2024-02-27":{"claude":{"input":100}},
-        "2024-02-28":{"claude":{"input":2,"output":1,"cached":999}},
-        "2024-02-29":{"claude":{"input":10},"api":{"output":5}},
-        "2024-03-01":{"local":{"input":-5,"output":2}},
-        "2024-02-30":{"claude":{"input":900}},
-        "2050-01-01":{"claude":{"input":900}}
-    })");
-    const std::string before = history.dump();
-    Json model = tokenActivity(history, "2024-03-02", 4);
-    CHECK_EQ(model["days"].size(), (size_t)4);
-    CHECK_EQ(model["days"].at(0)["date"].str(), std::string("2024-02-28"));
-    CHECK_EQ(model["days"].at(1)["daily"].i64(), 15LL);
-    CHECK_EQ(model["days"].at(0)["cumulative"].i64(), 103LL);
-    CHECK_EQ(model["days"].at(3)["weekly"].i64(), 120LL);
-    CHECK(!model["days"].at(3)["recorded"].boolean());
-    CHECK_EQ(model["windowTotal"].i64(), 20LL);
-    CHECK_EQ(model["total"].i64(), 120LL);
-    CHECK_EQ(model["activeDays"].i64(), 3LL);
-    CHECK_EQ(model["first"].str(), std::string("2024-02-27"));
-    CHECK_EQ(history.dump(), before);
-    CHECK_EQ(tokenActivity(Json::object(), "2026-01-01")["days"].size(), (size_t)365);
-    CHECK_EQ(tokenActivity(Json::object(), "2026-01-01")["total"].i64(), 0LL);
-    CHECK_EQ(tokenActivity(history, "2024-02-30").size(), (size_t)0);
-    CHECK_EQ(tokenActivity(history, "2024-03-05", 1)["days"].at(0)["weekly"].i64(), 20LL);
 }
 
 static void testHumanize() {
@@ -1319,8 +1249,6 @@ int main() {
     testCommandLine();
     testUtil();
     testProjectFolders();
-    testPersonas();
-    testActivity();
     testHumanize();
     testGuard();
     testLocalTools();

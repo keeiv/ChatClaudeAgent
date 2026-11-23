@@ -480,12 +480,6 @@ struct PipelineTestAccess {
         check(c->task.isNull(), "chat rollback cannot retain removed task memory");
         restarted.settings_["geminiPath"] = util::narrow(util::joinPath(util::exeDir(), L"pipeline_test.exe"));
         restarted.geminiStatus_.state = "ok";
-        restarted.settings_["personas"].push(J({{"id", "gemini-fixture"},
-                                                {"agent", "gemini"},
-                                                {"name", "Gemini reviewer"},
-                                                {"prompt", "GEMINI_PERSONA_MARKER"}}));
-        restarted.settings_["persona"]["gemini"] = "gemini-fixture";
-        restarted.settings_["profiles"]["gemini"]["name"] = "Gemini reviewer";
         cliNodes.items().back() =
             J({{"id", "gemini-second-reviewer"}, {"name", "Gemini"}, {"backend", "gemini"}, {"role", "review"}});
         c->pipeline = J({{"nodes", cliNodes}, {"maxCycles", 3}, {"requireTests", false}, {"routing", "full"}});
@@ -506,10 +500,10 @@ struct PipelineTestAccess {
         check(geminiAuthor && geminiFlow, "Gemini identity is visible in messages and workflow");
         std::string received;
         check(util::readFile(util::joinPath(util::appDataDir(), L"gemini-input.txt"), received) &&
-                  received.find("GEMINI_PERSONA_MARKER") != std::string::npos,
-              "selected Gemini persona reaches the real subprocess stdin");
+                  received.find("多代理流程") != std::string::npos,
+              "the pipeline role reaches the real Gemini subprocess stdin");
         check(flow["layout"].str() == "pipeline" && flow["nodes"].size() == cliNodes.size() &&
-                  flow["nodes"].at(2)["profile"].str() == "Gemini reviewer",
+                  flow["nodes"].at(2)["profile"].str() == "Gemini",
               "configured node order and Gemini display name reach workflow");
         SetEnvironmentVariableW(L"CCA_TEST_GEMINI_HOLD", L"1");
         restarted.groupStart(*c, "interrupt Gemini without changing the GPT message");

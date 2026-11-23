@@ -4,10 +4,10 @@
 namespace logo_art {
 
 inline const char* const kPixels[] = {
-    "................", "....wwwwww......", "...wwwwwww......", "..wwwwwwww......",
-    ".wwww...........", ".www..wwwwww....", ".www..wwwwwww...", ".wwww.wwwwwwww..",
-    "..wwwwwwww.wwww.", "...wwwwwww..www.", "....wwwwww..www.", "...........wwww.",
-    "......wwwwwwww..", "......wwwwwww...", "......wwwwww....", "................",
+    "................", "................", "................", ".....wwwggg.....",
+    "....wwwwgggg....", "...www....ggg...", "...ww......gg...", "..www......ggg..",
+    "..www......ggg..", "...ww......gg...", "...www....ggg...", "....wwwwgggg....",
+    ".....wwwggg.....", "................", "................", "................",
 };
 inline const int kRows = 16;
 inline const int kCols = 16;
@@ -17,7 +17,8 @@ struct Color {
     unsigned rgb;
 };
 inline const Color kColors[] = {
-    {'w', 0xE9EDF1},
+    {'w', 0xEDF2F6},
+    {'g', 0x6FB1FF},
 };
 
 }  // namespace logo_art
