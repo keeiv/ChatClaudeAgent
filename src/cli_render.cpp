@@ -681,6 +681,16 @@ Rendered renderMessage(const Json& m, const Names& names, int cols) {
             addAll(wrap({{muted(), handoffText(m, names)}}, cols, {{fg(color::kBrand), "  ⇄ "}}, line("    ")));
         } else if (kind == "paused") {
             addAll(wrap({{fg(color::kWarn), m["text"].str()}}, cols, {{fg(color::kWarn), "  ‖ "}}, line("    ")));
+        } else if (kind == "dirty") {
+            std::string files;
+            for (const auto& f : m["files"].items())
+                if (files.size() < 400) files += (files.empty() ? "" : "、") + f.str();
+            addAll(wrap({{fg(color::kWarn), m["text"].str()}}, cols, {{fg(color::kWarn), "  ! "}}, line("    ")));
+            if (!files.empty()) addAll(wrap({{muted(), files}}, cols, line("    "), line("    ")));
+            addAll(wrap({{muted(), "輸入 /start 照常開始，或先用 /git 提交"}}, cols, line("    "), line("    ")));
+        } else if (kind == "protected") {
+            addAll(wrap({{fg(color::kErr, true), "已還原 "}, {Style(), m["text"].str()}}, cols,
+                        {{fg(color::kErr), "  ◆ "}}, line("    ")));
         } else if (kind == "skip") {
             // Skips stay one muted line with a fixed tag, so a long run of exhausted members stays readable.
             addAll(wrap({{fg(color::kWarn, true), "跳過 "}, {Style(), m["text"].str()}}, cols,

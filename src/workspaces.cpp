@@ -129,8 +129,40 @@ Json checkTaskMerge(const Json& workspace, bool apply, const std::string& expect
     return result;
 }
 
+// Brings the merge target into the task branch inside the isolated worktree, leaving conflict markers there only.
+// The project folder itself is untouched until the user merges the resolved branch back after a fresh check.
+Json startWorktreeResolve(const Json& workspace) {
+    const auto path = util::widen(workspace["path"].str());
+    std::string out, error;
+    if (git(path, {L"status", L"--porcelain", L"--untracked-files=normal"}, &out, &error) || !util::trim(out).empty())
+        return failure("隔離工作區還有未提交的變更；請先提交再解衝突");
+    if (!git(path, {L"rev-parse", L"--verify", L"MERGE_HEAD"}, &out, &error))
+        return failure("隔離工作區已有進行中的合併");
+    const int code =
+        git(path, {L"merge", L"--no-ff", L"--no-commit", util::widen(workspace["targetBranch"].str())}, &out, &error);
+    std::string unmerged;
+    git(path, {L"diff", L"--name-only", L"--diff-filter=U"}, &unmerged, &error);
+    Json files = Json::array();
+    for (const auto& line : util::splitLines(unmerged))
+        if (!util::trim(line).empty() && files.size() < 200) files.push(util::trim(line));
+    if (code == 0 || files.empty()) {
+        // Nothing to resolve: leave the branch exactly as it was.
+        git(path, {L"merge", L"--abort"}, &out, &error);
+        return J({{"ok", true}, {"conflicts", Json::array()}});
+    }
+    return J({{"ok", true}, {"conflicts", files}});
+}
+
 void App::handleWorktree(Conversation& c, const Json& m) {
     const auto type = m["type"].str();
+    if (type == "worktree.resolve") {
+        resolveWorktree(c);
+        return;
+    }
+    if (type == "worktree.queue") {
+        handleSchedules(m);  // the merge queue lives with the other timed work in schedule.cpp
+        return;
+    }
     if (type != "worktree.create" && type != "worktree.check" && type != "worktree.merge") return;
     if (anyBusy(c) || c.group.active) {
         toast("error", "對話工作中，不能變更工作區");
@@ -197,6 +229,63 @@ void App::handleWorktree(Conversation& c, const Json& m) {
                 if (result["merged"].boolean()) toast("ok", "已合併已提交的任務變更，worktree 保留供查閱");
             }
             send(J({{"type", "worktree.result"}, {"id", id}, {"action", type}, {"result", result}}));
+        });
+    }).detach();
+}
+
+void App::resolveWorktree(Conversation& c) {
+    const Json workspace = c.collaboration["workspace"];
+    if (!workspace["ok"].boolean()) {
+        toast("error", "尚未建立 worktree");
+        return;
+    }
+    if (anyBusy(c) || c.group.active) {
+        toast("error", "對話工作中，不能開始解衝突");
+        return;
+    }
+    c.preparing = "worktree";
+    c.stateDirty = true;
+    std::weak_ptr<int> life = lifetime_;
+    std::thread([this, life, id = c.id, workspace] {
+        Json result = startWorktreeResolve(workspace);
+        postToUi([this, life, id, workspace, result] {
+            if (life.expired()) return;
+            Conversation* c = find(id);
+            if (!c) return;
+            c->preparing.clear();
+            c->stateDirty = true;
+            if (!result["ok"].boolean()) {
+                toast("error", result["error"].str());
+                return;
+            }
+            if (result["conflicts"].empty()) {
+                toast("info", "沒有衝突：合併目標可以直接併入，按「檢查能否合併」後合併即可");
+                return;
+            }
+            std::string list;
+            for (const auto& f : result["conflicts"].items()) list += "\n- " + f.str();
+            pushMessage(
+                *c, J({{"author", "system"},
+                       {"kind", "info"},
+                       {"text", "已在隔離工作區把 " + workspace["targetBranch"].str() + " 合併進任務分支，" +
+                                    std::to_string(result["conflicts"].size()) + " 個檔案有衝突，交給 AI 處理。"}}));
+            const std::string prompt =
+                "【解衝突】隔離工作區正在把 " + workspace["targetBranch"].str() + " 合併進任務分支 " +
+                workspace["branch"].str() + "，下列檔案有衝突：" + list +
+                "\n\n請逐一解開衝突標記，保留兩邊各自的意圖；不確定時說明取捨。解完後執行相關測試，用 git add 標記"
+                "已解決的檔案，再用 git commit 完成這次合併（不要推送、不要動其他分支）。最後列出每個檔案怎麼處理。";
+            std::string error;
+            if (c->kind == "group") {
+                groupStart(*c, prompt);
+            } else {
+                const AgentKind k = c->kind == "gemini"                         ? AgentKind::Gemini
+                                    : c->kind == "cursor"                       ? AgentKind::Cursor
+                                    : c->kind == "claude" && c->lead != "codex" ? AgentKind::Claude
+                                                                                : AgentKind::Codex;
+                pushMessage(*c, J({{"author", "user"}, {"text", prompt}}));
+                if (!sendToAgent(*c, k, prompt, &error))
+                    pushMessage(*c, J({{"author", "system"}, {"kind", "error"}, {"text", error}}));
+            }
         });
     }).detach();
 }

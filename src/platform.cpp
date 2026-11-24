@@ -153,6 +153,67 @@ bool App::handlePlatform(const Json& m) {
                 return true;
             }
     }
+    if (type == "pipelines.list" || type == "pipelines.save") {
+        // Templates live in the project (.cca/pipelines/*.json) so they are versioned with the code. Loading one only
+        // fills the editor; the user still reviews and saves it through pipeline.set and its validation.
+        Conversation* c = find(m["id"].str());
+        Json reply = J({{"type", "pipelines.result"}, {"reqId", m["reqId"]}, {"ok", false}});
+        if (!c || c->cwd.empty() || !util::dirExists(c->cwd)) {
+            reply["error"] = "請先選擇專案資料夾";
+            send(reply);
+            return true;
+        }
+        const std::wstring dir = util::joinPath(util::joinPath(c->cwd, L".cca"), L"pipelines");
+        if (type == "pipelines.save") {
+            const std::string file = m["file"].str();
+            std::string error;
+            bool okName = !file.empty() && file.size() <= 40;
+            for (unsigned char ch : file) okName &= isalnum(ch) || ch == '-' || ch == '_';
+            if (!okName) error = "範本檔名只能用英文字母、數字、- 和 _，最多 40 字";
+            // The validator's result is the gate; a refusal without a message still writes nothing.
+            const bool valid = okName && validatePipeline(m["pipeline"], &error);
+            if (!valid && error.empty()) error = "流程設定無效";
+            if (valid) {
+                util::ensureDir(util::joinPath(c->cwd, L".cca"));
+                util::ensureDir(dir);
+                Json doc = J({{"name", util::truncateUtf8(m["name"].str(file), 80)},
+                              {"description", util::truncateUtf8(m["description"].str(), 300)},
+                              {"pipeline", m["pipeline"]}});
+                if (!util::writeFileAtomic(util::joinPath(dir, util::widen(file + ".json")), doc.dump()))
+                    error = "無法寫入 .cca/pipelines/" + file + ".json";
+            }
+            reply["ok"] = error.empty();
+            reply["error"] = error;
+            send(reply);
+            return true;
+        }
+        Json items = Json::array();
+        WIN32_FIND_DATAW fd;
+        HANDLE h = FindFirstFileW(util::joinPath(dir, L"*.json").c_str(), &fd);
+        if (h != INVALID_HANDLE_VALUE) {
+            do {
+                if (fd.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) continue;
+                if (items.size() >= 50) break;
+                std::string text, error;
+                const std::string file = util::narrow(fd.cFileName);
+                Json doc = fd.nFileSizeLow <= 65536 && util::readFile(util::joinPath(dir, fd.cFileName), text)
+                               ? Json::parse(text)
+                               : Json();
+                if (!doc.isObject()) error = "不是有效的 JSON";
+                else validatePipeline(doc["pipeline"], &error);
+                items.push(J({{"file", file},
+                              {"name", util::truncateUtf8(doc["name"].str(file), 80)},
+                              {"description", util::truncateUtf8(doc["description"].str(), 300)},
+                              {"pipeline", error.empty() ? doc["pipeline"] : Json()},
+                              {"error", error}}));
+            } while (FindNextFileW(h, &fd));
+            FindClose(h);
+        }
+        reply["ok"] = true;
+        reply["items"] = items;
+        send(reply);
+        return true;
+    }
     if (type == "pipeline.set") {
         Conversation* c = find(m["id"].str());
         std::string error;

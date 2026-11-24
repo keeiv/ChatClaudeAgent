@@ -10,10 +10,12 @@ window.CCAGit = {
     const ROW = 30, LANE = 14;
     let sequence = 0;
 
-    function open(c) {
+    // preset (from a group task): the files to pre-select and a drafted commit message.
+    function open(c, preset = null) {
       if (!c) return;
       if (!c.cwd) { toast('error', '請先選擇專案資料夾'); return; }
-      S.git = { convId: c.id, data: null, sel: new Set(), allowRisk: new Set(), message: '', task: true, diff: null, busy: '', secrets: [], seeded: false };
+      S.git = { convId: c.id, data: null, sel: new Set(), allowRisk: new Set(), message: preset?.message || '', task: true, diff: null,
+        busy: '', secrets: [], seeded: false, preset };
       send({ type: 'git.open', id: c.id });
       render();
     }
@@ -63,7 +65,10 @@ window.CCAGit = {
     }
 
     function seedSelection(g) {
-      g.sel = new Set((g.data.files || []).filter(f => f.selected).map(f => f.path));
+      // A task preset selects exactly its files, except locked or risky ones, which still need the usual confirmation.
+      const wanted = g.preset?.paths?.length ? new Set(g.preset.paths) : null;
+      g.sel = new Set((g.data.files || []).filter(f => wanted ? wanted.has(f.path) && !f.locked && f.tone !== 'risk' : f.selected).map(f => f.path));
+      g.preset = null;
       g.allowRisk = new Set();
       g.seeded = true;
     }
@@ -312,6 +317,7 @@ window.CCAGit = {
         render(); return true;
       }
       if (m.type === 'git.busy') { if (g && g.convId === m.id) { g.busy = m.op; render(); } return true; }
+      if (m.type === 'git.reload') { if (g && g.convId === m.id) send({ type: 'git.refresh', id: m.id }); return true; }
       if (m.type === 'git.result') {
         if (!g || g.convId !== m.id) return true;
         g.busy = '';

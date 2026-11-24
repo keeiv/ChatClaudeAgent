@@ -207,6 +207,8 @@ void App::ensureProfileDefaults() {
     if (!settings_["humanize"].isObject()) settings_["humanize"] = J({{"enabled", true}, {"extra", ""}});
     // Compliance checks on every reply (guard.hpp): on by default, two send-backs before pausing.
     if (!settings_["guard"].isObject()) settings_["guard"] = J({{"enabled", true}, {"retries", 2}});
+    if (!settings_["notifications"].isObject()) settings_["notifications"] = J({{"enabled", true}});
+    if (!settings_["dirtyCheck"].isBool()) settings_["dirtyCheck"] = true;
     // Offer the Docker sandbox to Claude and GPT as a shared tool (sandbox_mcp.hpp); false hides it.
     if (!settings_["sandboxShare"].isBool()) settings_["sandboxShare"] = true;
     if (!settings_["locals"].isObject()) settings_["locals"] = Json::object();

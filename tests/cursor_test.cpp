@@ -64,6 +64,13 @@ int fixture(int argc, char** argv) {
                                                      {"apiKeyPresent", !util::getEnv(L"CURSOR_API_KEY").empty()},
                                                      {"noColor", util::narrow(util::getEnv(L"NO_COLOR"))}})
                                                       .dump());
+    if (input.find("write-protected") != std::string::npos) {
+        // Real edits in the project folder: one under a protected path, one ordinary file.
+        CreateDirectoryW(L"secrets", nullptr);
+        util::writeFileAtomic(L"secrets\\key.txt", "agent wrote a key\n");
+        util::writeFileAtomic(L"notes.txt", "agent notes\n");
+        util::writeFileAtomic(L"app.lock", "changed by the agent\n");
+    }
     const std::string session = "fixture-chat";
     out(J({{"type", "system"},
            {"subtype", "init"},
@@ -200,6 +207,33 @@ struct CursorTestAccess {
         std::string receipt;
         util::readFile(util::joinPath(c->cwd, L"cursor-receipt.json"), receipt);
         check(Json::parse(receipt)["args"].dump().find("grok-4.7-high") != std::string::npos, "pinned model forwarded");
+
+        // Protected paths: the host compares the turn's checkpoints and puts matching files back.
+        util::writeFileAtomic(util::joinPath(c->cwd, L"app.lock"), "original lock\n");
+        app.applySettings(*c, J({{"protectedPaths", Json(Json::Array{Json("secrets/"), Json("*.lock")})}}));
+        check(c->protectedPaths.size() == 2, "protected path patterns are saved");
+        app.applySettings(*c, J({{"protectedPaths", Json(Json::Array{Json("C:/Windows/")})}}));
+        check(c->protectedPaths.size() == 2, "an absolute protected path is refused and the old list kept");
+        check(app.sendToAgent(*c, AgentKind::Cursor, "write-protected", &error), "protected turn starts");
+        until = GetTickCount64() + 30000;
+        while ((app.anyBusy(*c) || !c->preparing.empty()) && GetTickCount64() < until) {
+            pump();
+            Sleep(10);
+        }
+        pump();
+        std::string lock, notes;
+        util::readFile(util::joinPath(c->cwd, L"app.lock"), lock);
+        util::readFile(util::joinPath(c->cwd, L"notes.txt"), notes);
+        check(!util::fileExists(util::joinPath(c->cwd, L"secrets\\key.txt")),
+              "a new file under a protected folder is removed");
+        check(lock == "original lock\n", "a protected file is put back to the turn's starting version");
+        check(notes == "agent notes\n", "ordinary edits in the same turn are kept");
+        const Json* notice = nullptr;
+        for (const auto& m : c->messages)
+            if (m["kind"].str() == "protected") notice = &m;
+        check(notice && (*notice)["files"].size() == 2 && (*notice)["checkpoint"].str().size() >= 8,
+              "the chat names the reverted files and the checkpoint holding the agent's version");
+        check(!c->protecting && !app.anyBusy(*c), "the conversation is free again after the check");
 
         // Group rotation passes Cursor over when its permission or model cannot be honoured.
         Conversation group;

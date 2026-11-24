@@ -200,7 +200,7 @@ struct AppearanceTestAccess {
 
 int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "app-server") return fakeCodex();
-    check(std::string(CCA_VERSION) == "1.0.2-terra", "the ordinary line continues with 1.0.2-terra");
+    check(std::string(CCA_VERSION) == "1.0.2-sol", "the ordinary line continues with 1.0.2-sol");
     check(!themeById("cca").isNull() && !themeById("cca-light").isNull(),
           "the catalogue holds the dark and light looks");
     for (const auto& theme : themeCatalogue().items()) {

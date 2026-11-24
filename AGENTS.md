@@ -19,6 +19,7 @@ CCA 讓 Claude（Claude Code CLI）和 GPT（Codex app-server）用使用者自�
 | `src/claude_agent.*`、`codex_agent.*` | 兩個 CLI 的協定轉接，轉成 `agent.hpp` 的 `AgentEvent` |
 | `src/gemini_agent.*`、`gemini_auth.cpp`、`tools/gemini_account.cjs` | Gemini CLI 的 Google 帳號登入、停用帳號（`retired`）判斷、官方方案／額度、私訊、群組第三位審查者與多代理審查；可修改檔案，無介面權限不足時拒絕工具 |
 | `src/cursor_agent.*`、`cursor_auth.cpp` | Cursor Agent CLI：直接以版本資料夾的 `node.exe` 執行 `index.js`、`stream-json` 轉成 `AgentEvent`、帳號／方案／模型清單（只執行唯讀指令）、權限與 Cursor 自身 `approvalMode` 的拒絕規則。設計見 `docs/cursor.md` |
+| `src/protect.cpp`、`mentions.cpp`、`rules.cpp`、`schedule.cpp` | 受保護路徑（每輪結束後依檢查點差異還原）、`@` 指定檔案（搜尋與附註）、專案規則編輯器、排程任務與合併佇列。設計見 `docs/controls.md` |
 | `src/group.cpp`、`local.cpp`、`takeover.cpp` | 群組輪替（主刀 → 搭檔 → Gemini → Cursor）、本地審查員、額度用完時的接手、跳過（`groupSkip`）與全部用完的強制停止（`groupQuotaStop`） |
 | `src/guard.*` | 規範審查：每則回覆的語言、角色稱呼、VERDICT、取證檢查，規則卡與退回訊息 |
 | `src/local_tools.*` | 本地審查員的唯讀工具（只限專案資料夾）與引用比對 |
@@ -74,6 +75,7 @@ node tests\git_browser.cjs   # 版本控制面板與自動接續設定；需 Pla
 node tests\gemini_account.cjs # 隔離的官方 SDK 替身、方案與額度欄位
 node tests\gemini_browser.cjs # Gemini 帳號頁與第二位可修改檔案審查者；需 Playwright、Edge、5220 埠 UI 伺服器
 node tests\cursor_browser.cjs # Cursor 私訊、Grok 優先的模型選單、群組成員、流程節點與帳號卡；需 Playwright、Edge、5220 埠 UI 伺服器
+node tests\controls_browser.cjs # 受保護路徑、任務上限、開工前檢查、@ 選檔、Ctrl+K、專案規則、流程範本、通知與排程；需 Playwright、Edge、5220 埠 UI 伺服器
 python tools\make_themes.py --check # 目錄變更後先移除 --check 重新產生
 node tests\markdown_links.cjs # 本機路徑、行號、Markdown 跳脫與協定白名單
 node tests\message_bounds_browser.cjs # 真正 Edge 檢查長指令與本機連結，需 5220 埠 UI 伺服器
@@ -134,6 +136,7 @@ python tools\check_style.py --format --js   # 交出前必跑，見「程式碼�
 - Gemini 帳號查詢須同時支援分離 core 與新版 bundled ESM SDK，只從所選安裝的入口圖載入，拒絕其他專案或上層套件。不得執行 CLI 主入口來猜登入，也不得為檢查帳號發送模型提示詞。
 - Gemini 使用官方 npm CLI 的 Google OAuth。免費層與 Google One 個人帳號已於 2026-06-18 停止支援 Gemini CLI；帳號檢查須用官方 CLI 的設定請求辨識 `UNSUPPORTED_CLIENT` 並顯示 `retired`，不能只看健康檢查就宣稱可用，額度查詢須綁定設定請求回傳的專案。移除 API 計費環境並強制 `oauth-personal`。方案只顯示 Google 回報名稱，額度缺值顯示未知，不用 Token 推算。沒有官方模型目錄時只允許預設模型。無介面計畫模式可能自動放寬權限，CCA 的 `plan` 不啟動 Gemini；`ask`／`edit` 不自動升成 YOLO。Gemini 工具輸出不含可驗證的 shell 結束碼，不能據此通過必要測試閘門。
 - Cursor 只用登入的帳號：移除 `CURSOR_API_KEY`、`CURSOR_AUTH_TOKEN`、`NODE_OPTIONS`，帳號檢查只執行 `status`、`about`、`models`，不送提示詞。模型 ID 只接受 `agent models` 回報且不以 `-` 開頭的值，沒有選擇就拒絕啟動，不退回 CLI 預設。規劃與每次詢問不啟動 Cursor（無介面執行會直接寫入工作區）；自動編輯不加 `--force`，且使用者 `cli-config.json` 的 `approvalMode` 不是 `allowlist`、或專案及上層資料夾的 `.cursor\cli.json` 在 `permissions.allow` 有 `Read(...)` 以外的項目時拒絕（專案檔會取代使用者的允許清單）；只有完全存取加 `--force`。帳號重新檢查時保留上次通過的狀態。測試用 `cursorLaunchOverride_` 讓受測程式扮演 Cursor，並把 `CURSOR_CONFIG_DIR` 指到暫存資料夾。不用 `--stream-partial-output`（會重送文字）。結束碼只取 CLI shell 執行器回報的數字，缺值不補。
+- 受保護路徑只依主機的檢查點差異判斷（不採信後端回報），在 `TurnDone` 被處理前完成還原並保存 AI 的版本；規則用 `gitflow::globMatch`，拒絕絕對路徑與 `..`。開工前檢查只看群組與多代理流程、只在 Git 倉庫裡執行。任務上限在 `sendToAgent` 擋下下一輪，「繼續」從當下重給一份額度。`@` 只附上存在的專案內路徑，不把檔案內容塞進提示詞。專案規則只寫 `AGENTS.md`／`CLAUDE.md`，而且只覆蓋使用者打開時的版本。流程範本存在 `.cca/pipelines/`，載入只填入編輯器，套用仍經 `pipeline.set` 驗證。任務分支、PR、CI 與合併都由使用者按下才執行，CCA 不輪詢 CI、不自動推送；解衝突只在隔離 worktree 裡進行。排程只在 CCA 開著時、每天最多一次，逾時一小時跳過。
 - 外觀只接受目錄 ID，不接受任意 CSS。`config/themes.json` 與原生 token 經產生器共用至桌面、CLI 和更新視窗；預覽不保存，失敗須恢復已保存外觀。原生程式讀的 token 必須是 `#rrggbb`，名稱不能改；變更 `:root` 或目錄後執行 `tools/make_themes.py`。只用 Windows 內建字型。
 - 群組順序由主機 `groupOrder()` 正規化，`groups.reorder` 必須包含當下所有且只含群組 ID，原子保存成功後才更新。訊息活動不能重排群組；拖曳期間保留原生 DOM。刪除最後群組不自動建立替代群組，私訊保持可用。
 - 對話資料在 `%APPDATA%\CCA`（`util::appDataDir()`）。桌面版和 CLI 用 `util::lockDataDir()` 互斥，不能同時寫。

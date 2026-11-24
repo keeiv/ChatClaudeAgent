@@ -400,6 +400,17 @@
       case 'folder.picked':
         if (waiters[m.reqId]) { waiters[m.reqId](m.path); delete waiters[m.reqId]; }
         break;
+      case 'pipelines.result':
+      case 'rules.result':
+        if (waiters[m.reqId]) { waiters[m.reqId](m); delete waiters[m.reqId]; }
+        break;
+      case 'files.found':
+        if (waiters[m.reqId]) { waiters[m.reqId](m); delete waiters[m.reqId]; }
+        break;
+      case 'focusConv':
+        // A clicked Windows notification brings CCA forward on the conversation it was about.
+        if (S.convs.some(c => c.id === m.id)) openConv(m.id);
+        break;
       case 'win.state':
         S.winMax = !!m.maximized;
         renderTitlebar();
@@ -725,7 +736,7 @@
     );
     put(side,
       h('div', { class: 'side-top' }, h('button', { class: 'side-search', type: 'button', onclick: quickSwitcher },
-        icon('search', 15), h('span', {}, '搜尋或切換對話'), h('kbd', {}, 'Ctrl K'))),
+        icon('search', 15), h('span', {}, '動作或對話'), h('kbd', {}, 'Ctrl K'))),
       list,
     );
     list.scrollTop = scroll;
@@ -813,18 +824,82 @@
     chat.banner = h('div');
     chat.textarea = h('textarea', { rows: 1, spellcheck: false });
     chat.textarea.value = S.drafts[c.id] || '';
-    chat.textarea.addEventListener('input', () => { S.drafts[c.id] = chat.textarea.value; autoGrow(); });
+    chat.textarea.addEventListener('input', () => { S.drafts[c.id] = chat.textarea.value; autoGrow(); mentionUpdate(); });
     chat.textarea.addEventListener('keydown', (e) => {
+      if (mentionKey(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); submit(); }
     });
+    chat.textarea.addEventListener('blur', () => setTimeout(mentionClose, 150));
+    chat.mention = { box: h('div', { class: 'mention-pop', role: 'listbox', 'aria-label': '專案檔案', hidden: true }),
+      items: [], sel: 0, start: -1, seq: 0 };
     chat.addBtn = h('button', { class: 'c-btn', 'data-tip': '插入檔案路徑', onclick: insertPath }, icon('plus', 22));
     chat.composer = h('div', { class: 'composer' }, chat.addBtn, chat.textarea, h('div', { style: { width: '12px' } }));
     chat.hint = h('div', { class: 'composer-hint' });
     put(main, chat.head, chat.flow, chat.scroll, chat.typing,
-      h('div', { class: 'composer-wrap' }, chat.banner, chat.composer, chat.hint));
+      h('div', { class: 'composer-wrap' }, chat.banner, chat.mention.box, chat.composer, chat.hint));
     renderMessages(true);
     setTimeout(() => chat.textarea && chat.textarea.focus(), 0);
     autoGrow();
+  }
+  // "@" in the composer: the host lists matching project files; the chosen path is inserted as "@path ".
+  function mentionUpdate() {
+    const t = chat.textarea, mt = chat.mention, c = conv();
+    if (!t || !mt) return;
+    const before = t.value.slice(0, t.selectionStart);
+    const hit = before.match(/(^|\s)@([^\s@]*)$/);
+    if (!hit || !c || !c.cwd) { mentionClose(); return; }
+    mt.start = t.selectionStart - hit[2].length - 1;
+    const seq = ++mt.seq;
+    clearTimeout(mt.timer);
+    mt.timer = setTimeout(async () => {
+      const found = await request({ type: 'files.search', id: c.id, query: hit[2] });
+      if (seq !== mt.seq) return;
+      mt.items = found.items || [];
+      mt.sel = 0;
+      mentionDraw(found);
+    }, 120);
+  }
+  function mentionDraw(found) {
+    const mt = chat.mention;
+    if (!mt.items.length) {
+      put(mt.box, h('div', { class: 'mention-empty' }, found && found.scanned === 0 ? '專案資料夾裡沒有檔案' : '沒有符合的檔案'));
+    } else {
+      put(mt.box, mt.items.map((path, i) => h('div', { class: 'mention-item' + (i === mt.sel ? ' sel' : ''), role: 'option',
+        'aria-selected': String(i === mt.sel), onmousedown: (e) => { e.preventDefault(); mentionPick(i); } },
+        icon('file', 14), h('span', { class: 'mono' }, path))),
+        found && found.truncated ? h('div', { class: 'mention-empty' }, '專案很大，只搜尋了前 20,000 個檔案') : null);
+    }
+    mt.box.hidden = false;
+  }
+  function mentionPick(i) {
+    const t = chat.textarea, mt = chat.mention, path = mt.items[i];
+    if (!path || mt.start < 0) return;
+    t.setRangeText('@' + path + ' ', mt.start, t.selectionStart, 'end');
+    S.drafts[conv().id] = t.value;
+    mentionClose();
+    autoGrow();
+    t.focus();
+  }
+  function mentionClose() {
+    const mt = chat.mention;
+    if (!mt) return;
+    mt.seq++;
+    mt.start = -1;
+    mt.items = [];
+    mt.box.hidden = true;
+  }
+  function mentionKey(e) {
+    const mt = chat.mention;
+    if (!mt || mt.box.hidden || !mt.items.length) return e.key === 'Escape' && mt && !mt.box.hidden ? (mentionClose(), true) : false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      mt.sel = (mt.sel + (e.key === 'ArrowDown' ? 1 : mt.items.length - 1)) % mt.items.length;
+      mentionDraw();
+      return true;
+    }
+    if ((e.key === 'Enter' || e.key === 'Tab') && !e.isComposing) { e.preventDefault(); mentionPick(mt.sel); return true; }
+    if (e.key === 'Escape') { e.preventDefault(); mentionClose(); return true; }
+    return false;
   }
   function autoGrow() {
     const t = chat.textarea;
@@ -1019,6 +1094,17 @@
         icon(perm.icon, 14), h('span', {}, perm.label), icon('chevron', 14))));
       rows.push(row('專案資料夾', chip({ class: `chip keep${c.cwd && !c.folderMissing ? '' : ' warn'}`, 'data-tip': c.cwd || '', onclick: () => { closePop(); pickFolder(c); } },
         icon('folder', 14), h('span', {}, c.cwd ? baseName(c.cwd) : '選擇資料夾'))));
+      if (c.kind === 'group') {
+        const parts = [c.limitTokens ? `${(c.limitTokens / 10000).toLocaleString('zh-TW')} 萬 tokens` : '', c.limitMinutes ? `${c.limitMinutes} 分鐘` : ''].filter(Boolean);
+        rows.push(row('任務上限', chip({ class: 'chip keep', 'data-tip': '超過時，交給下一位之前先暫停',
+          onclick: () => { closePop(); taskLimitDialog(c); } }, icon('chart', 14), h('span', {}, parts.join('、') || '不限'), icon('chevron', 14))));
+      }
+      if (c.cwd) rows.push(row('專案規則', chip({ class: 'chip keep', onclick: () => { closePop(); rulesDialog(c); } },
+        icon('file', 14), h('span', {}, 'AGENTS.md／CLAUDE.md'), icon('chevron', 14))));
+      const guarded = c.protectedPaths || [];
+      rows.push(row('受保護路徑', chip({ class: 'chip keep', 'data-tip': guarded.join('\n') || 'AI 改到這些路徑時，CCA 會把檔案還原',
+        onclick: () => { closePop(); protectedPathsDialog(c); } },
+        icon('shield', 14), h('span', {}, guarded.length ? `${guarded.length} 條規則` : '未設定'), icon('chevron', 14))));
     }
     if (c.kind === 'group' && !nodes) {
       rows.push(row('來回上限', chip({ class: 'chip keep', onclick: (ev) => roundsPicker(ev.currentTarget, c) }, h('span', {}, `${c.maxRounds} 輪`), icon('chevron', 14))));
@@ -1654,6 +1740,25 @@
         el.append(h('details', { class: 'sys-block route-note' }, h('summary', {}, `測試指令 ${m.command || ''}（結束碼 ${m.afterExit}）的輸出結尾`),
           h('pre', { class: 'mono' }, m.tail)));
       }
+    } else if (m.kind === 'dirty') {
+      // A group request waits because the project has uncommitted work that this task did not make.
+      const c = conv();
+      const latest = (S.msgs[S.current] || []).filter((x) => x.kind === 'dirty').pop();
+      const live = c && c.startPending && latest && latest.id === m.id;
+      el.append(h('span', { class: 'sys-icon yellow' }, icon('alert', 16)),
+        h('span', { style: { color: 'var(--text)' } }, m.text), time);
+      const files = m.files || [];
+      el.append(h('div', { class: 'sys-block' },
+        m.request ? h('div', { class: 'muted', style: { fontSize: '13px', marginBottom: '4px' } }, '等待中的需求：' + m.request) : null,
+        h('div', { class: 'muted mono', style: { fontSize: '12px' } }, files.slice(0, 10).join('、') + (m.count > 10 ? ` 等 ${m.count} 個` : '')),
+        live ? h('div', { class: 'actions', style: { display: 'flex', gap: '8px', marginTop: '6px' } },
+          h('button', { class: 'btn sm primary', onclick: () => send({ type: 'group.startAnyway', id: S.current }) }, '照常開始'),
+          h('button', { class: 'btn sm secondary', onclick: () => openGit(c) }, icon('branch', 14), '先到版本控制提交')) : null));
+    } else if (m.kind === 'protected') {
+      // The host put back files an agent changed under a protected path; the agent's version stays in a checkpoint.
+      el.append(h('span', { class: 'sys-icon red' }, icon('shield', 16)), h('span', { class: 'skip-tag' }, '已還原'),
+        m.agent ? h('span', { class: `skip-who ${m.agent}` }, displayName(m.agent)) : null,
+        h('span', { style: { color: 'var(--text)' } }, m.text), time);
     } else if (m.kind === 'skip') {
       // A member without quota is passed over; the tag keeps the reason visible after names change.
       el.classList.add('sys-skip');
@@ -1856,6 +1961,7 @@
         h('button', { class: 'btn sm primary', onclick: () => send({ type: 'task.resume', id: c.id }) }, icon('refresh', 14), '接續任務'));
     }
     if (t.earlier) box.append(h('div', { class: 'muted', style: { fontSize: '12px' } }, `較早的 ${t.earlier} 次交接只保留在紀錄檔`));
+    box.append(taskShipBlock(c, t));
     for (const x of t.handoffs || []) {
       const rev = x.base ? x.base.slice(0, 7) + (x.head ? '→' + x.head.slice(0, 7) : '') : '';
       box.append(h('div', { class: 'task-row', 'data-tip': x.next ? '下一步：' + x.next : null },
@@ -1867,6 +1973,49 @@
         x.failed ? h('span', { class: 'minus' }, '測試失敗') : null));
     }
     return box;
+  }
+
+  // Branch → commit (through the version-control pane and its rules) → PR with gh → CI results back to the task.
+  function taskShipBlock(c, t) {
+    const files = Object.keys(stateOf(c.id).group?.files || {});
+    const done = t.status === 'done';
+    const row = h('div', { class: 'ship-row' });
+    if (!t.branch) {
+      if (done && c.cwd) row.append(h('button', { class: 'btn sm secondary', onclick: () => taskBranchDialog(c, t, files) }, icon('branch', 14), '提交到任務分支'));
+    } else {
+      row.append(h('span', { class: 'mono ship-branch' }, t.branch),
+        h('button', { class: 'btn sm secondary', onclick: () => openGit(c, { paths: files, message: taskTitle(t) }) }, icon('branch', 14), '提交與推送'));
+      if (!t.pr?.url) row.append(h('button', { class: 'btn sm secondary', onclick: () => confirmPr(c) }, '開 PR'));
+    }
+    if (t.pr?.url) {
+      const checks = t.pr.checks || [];
+      const failed = checks.filter(x => x.bucket === 'fail');
+      const pending = checks.filter(x => x.bucket === 'pending');
+      row.append(h('button', { class: 'link-btn', onclick: () => send({ type: 'open', target: t.pr.url }) }, 'PR'),
+        h('button', { class: 'btn sm secondary', onclick: () => send({ type: 'git.checks', id: c.id }) }, icon('refresh', 14), '檢查 CI'),
+        h('span', { class: `tag${failed.length ? ' warn' : ''}` }, !checks.length ? '尚未讀取' : failed.length ? `${failed.length} 項失敗`
+          : pending.length ? `${pending.length} 項進行中` : '全部通過'));
+      if (failed.length) row.append(h('button', { class: 'btn sm primary', onclick: () => send({ type: 'task.ciFix', id: c.id }) }, '交回群組修正'));
+    }
+    return row.childNodes.length ? row : '';
+  }
+  const taskTitle = (t) => ((t.request || '').split('\n')[0] || 'CCA 任務').slice(0, 72);
+  function taskBranchDialog(c, t, files) {
+    const name = h('input', { class: 'input mono', 'aria-label': '分支名稱', value: 'cca/task-' + String(t.task_id || '').slice(-6) });
+    modal({ title: '提交到任務分支',
+      desc: '建立新分支並切換過去（你未提交的修改會一起帶過去），接著打開版本控制，預先選好這個任務改的檔案。確認後才會提交。',
+      body: [name],
+      foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '取消'),
+        h('button', { class: 'btn primary', onclick: () => {
+          send({ type: 'git.branch', id: c.id, name: name.value.trim() });
+          close();
+          openGit(c, { paths: files, message: taskTitle(t) });
+        } }, '建立分支並開啟版本控制')] });
+  }
+  function confirmPr(c) {
+    modal({ title: '開 PR', desc: '用 GitHub CLI（gh）建立 PR，標題與說明取自任務紀錄（需求、交接與測試結束碼）。請先推送分支。這會在 GitHub 上公開這些內容給有權限的人。',
+      foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '取消'),
+        h('button', { class: 'btn primary', onclick: () => { send({ type: 'git.pr', id: c.id }); close(); } }, '建立 PR')] });
   }
 
   function pipelineName(node) {
@@ -1999,9 +2148,9 @@
     renderPanel();
   }
   // The review and version-control panes share the chat area; opening one closes the other.
-  function openGit(c) {
+  function openGit(c, preset) {
     if (S.review) { S.review = null; renderReview(); }
-    git.open(c); renderPanel();
+    git.open(c, preset); renderPanel();
   }
   function closeReview() {
     S.review = null; renderReview(); renderPanel();
@@ -2276,6 +2425,80 @@
     filter.focus();
   }
 
+  // The project's own rules files, which the agents read; suggestions come from this project's send-backs.
+  async function rulesDialog(c) {
+    const r = await request({ type: 'rules.get', id: c.id });
+    if (!r.ok) { toast('error', r.error); return; }
+    // The text on disk when the dialog opened: the host saves only over that version.
+    r.files.forEach(f => { f.base = f.exists ? f.text : ''; });
+    let current = r.files[0];
+    const area = h('textarea', { class: 'input mono', rows: 16, 'aria-label': '規則內容' });
+    const tabs = h('div', { class: 'seg' });
+    const status = h('div', { class: 'hint' });
+    const draw = () => {
+      put(tabs, r.files.map(f => h('button', { class: f === current ? 'sel' : '', type: 'button', onclick: () => {
+        current.text = area.value; current = f; draw(); } }, f.name + (f.exists ? '' : '（新檔）'))));
+      area.value = current.text;
+      status.textContent = current.name === 'CLAUDE.md' ? 'Claude Code 讀 CLAUDE.md；Codex、Gemini、Cursor 與本地審查員讀 AGENTS.md。'
+        : 'Codex、Gemini、Cursor 與本地審查員讀 AGENTS.md；CLAUDE.md 可以用 @AGENTS.md 引用它。';
+    };
+    const suggestions = (r.suggestions || []).map(s => h('div', { class: 'rule-suggestion' },
+      h('span', {}, s.text), h('span', { class: 'muted' }, `退回 ${s.count} 次`),
+      h('button', { class: 'btn sm secondary', type: 'button', onclick: (e) => {
+        area.value = area.value.replace(/\s*$/, '') + (area.value.trim() ? '\n' : '') + '- ' + s.text + '\n';
+        e.currentTarget.disabled = true; } }, '加入')));
+    draw();
+    modal({
+      title: '專案規則', wide: true,
+      desc: r.folder,
+      body: [tabs, area, status,
+        suggestions.length ? [h('div', { class: 'field' }, h('label', {}, '常被退回的原因（依次數）'), suggestions)] : null],
+      foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '取消'),
+        h('button', { class: 'btn primary', onclick: async () => {
+          const saved = await request({ type: 'rules.save', id: c.id, name: current.name, text: area.value, base: current.base });
+          if (saved.ok) close(); else toast('error', saved.error);
+        } }, '保存這個檔案')],
+    });
+  }
+  // Token and time budget per group task; 0 means no limit. The host checks it before each member's turn.
+  function taskLimitDialog(c) {
+    const tokens = h('input', { class: 'input', type: 'number', min: 0, max: 10000, step: 1, 'aria-label': '萬 tokens',
+      value: c.limitTokens ? Math.round(c.limitTokens / 10000) : 0 });
+    const minutes = h('input', { class: 'input', type: 'number', min: 0, max: 1440, step: 5, 'aria-label': '分鐘', value: c.limitMinutes || 0 });
+    modal({
+      title: '任務上限',
+      desc: '群組任務累計的 token 或經過時間達到上限時，交給下一位之前先暫停。按「繼續」會再給同樣的額度。0 表示不限。',
+      body: [h('div', { class: 'field' }, h('label', {}, 'Token 上限（萬）'), tokens,
+        h('div', { class: 'hint' }, '所有成員回報的輸入加輸出 token。沒有回報用量的後端不計入。')),
+      h('div', { class: 'field' }, h('label', {}, '時間上限（分鐘）'), minutes)],
+      foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '取消'),
+        h('button', { class: 'btn primary', onclick: () => {
+          send({ type: 'conv.settings', id: c.id, settings: {
+            limitTokens: Math.max(0, Math.round(+tokens.value || 0)) * 10000, limitMinutes: Math.max(0, Math.round(+minutes.value || 0)) } });
+          close();
+        } }, '儲存')],
+    });
+  }
+  // One pattern per line; the host cleans and validates them (App::applySettings) and checks every finished turn.
+  function protectedPathsDialog(c) {
+    const area = h('textarea', { class: 'input mono', rows: 8, 'aria-label': '受保護路徑',
+      placeholder: 'migrations/\n.github/\n*.lock\nsrc/**/secrets.*', value: (c.protectedPaths || []).join('\n') });
+    modal({
+      title: '受保護路徑',
+      desc: 'AI 每一輪結束時，CCA 用檢查點比對實際改了哪些檔案；符合下列規則的檔案會還原到這一輪開始前的版本，AI 的版本另存檢查點。',
+      body: [area,
+        h('div', { class: 'hint' }, '每行一條，相對於專案資料夾。「資料夾/」保護底下全部；* 不跨資料夾，** 可以跨；沒有 / 的規則比對任何層的檔名，例如 *.lock。最多 40 條。'),
+        h('div', { class: 'hint' }, '需要 git。這是事後還原，不是唯讀權限：AI 在這一輪裡仍可能讀取或執行這些檔案。')],
+      foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '取消'),
+        h('button', { class: 'btn primary', onclick: () => {
+          const list = area.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+          send({ type: 'conv.settings', id: c.id, settings: { protectedPaths: list } });
+          close();
+        } }, '儲存')],
+    });
+    area.focus();
+  }
+
   function permPicker(anchor, c) {
     popover(anchor, [h('div', { class: 'pop-title' }, '權限模式'),
       Object.entries(PERMS).map(([k, p]) => h('button', { class: `pop-item${c.permission === k ? ' sel' : ''}`, onclick: () => { closePop(); setPermission(c, k); } },
@@ -2468,23 +2691,69 @@
     });
   }
 
+  // Ctrl+K: actions for the open conversation first, then every conversation; arrows move, Enter runs.
+  function paletteActions(c) {
+    const out = [];
+    const add = (label, hint, run, iconName = 'bolt') => out.push({ label, hint, run, icon: iconName });
+    if (c && S.view === 'chat') {
+      const st = stateOf(c.id);
+      if (running(c.id)) add('停止 AI', convTitle(c), () => send({ type: 'conv.stop', id: c.id }), 'stop');
+      for (const [k, p] of Object.entries(PERMS))
+        if (c.permission !== k) add('權限改為「' + p.label + '」', p.desc, () => setPermission(c, k), p.icon);
+      const agent = c.kind === 'group' ? null : c.kind === 'claude' && c.lead === 'codex' ? 'codex' : c.kind;
+      if (agent === 'cursor') add('選擇 Cursor 模型', selectionLabel(c, 'cursor'), () => cursorModelPicker(chat.head, c), 'sliders');
+      else if (agent === 'claude' || agent === 'codex') add('換模型或思考程度', selectionLabel(c, agent), () => modelPicker(chat.head, c, agent), 'sliders');
+      if (c.cwd) {
+        add('開啟審查窗格', '這次任務的變更', () => openReview(c, 'task'), 'diff');
+        add('版本控制', '選檔提交、推送與提交紀錄', () => openGit(c), 'branch');
+      }
+      add('受保護路徑', (c.protectedPaths || []).length + ' 條規則', () => protectedPathsDialog(c), 'shield');
+      if (c.cwd) add('專案規則', 'AGENTS.md 與 CLAUDE.md', () => rulesDialog(c), 'file');
+      if (st.task?.status === 'interrupted') add('接續中斷的任務', '從記錄的下一步繼續', () => send({ type: 'task.resume', id: c.id }), 'refresh');
+      if (c.startPending) add('照常開始等待中的任務', '專案有未提交的修改', () => send({ type: 'group.startAnyway', id: c.id }), 'arrow');
+    }
+    add('新增群組', '', () => createGroupDialog(), 'plus');
+    add('訂閱與用量', '', () => openView('account'), 'chart');
+    add('設定', '', () => openSettings(), 'sliders');
+    add('通知設定', '', () => openSettings('notify'), 'info');
+    return out;
+  }
   function quickSwitcher() {
-    const input = h('input', { class: 'input', placeholder: '要去哪裡？' });
-    const list = h('div', { style: { marginTop: '10px', maxHeight: '320px', overflowY: 'auto' } });
+    const input = h('input', { class: 'input', placeholder: '輸入動作或對話名稱', 'aria-label': '指令面板' });
+    const list = h('div', { class: 'palette-list', role: 'listbox' });
+    let rows = [], sel = 0;
     const paint = () => {
       const q = input.value.trim().toLowerCase();
-      clear(list);
-      const items = S.convs.filter((c) => !q || convTitle(c).toLowerCase().includes(q) || (c.cwd || '').toLowerCase().includes(q));
-      for (const c of items) {
-        list.append(h('button', { class: 'dm', onclick: () => { close(); openConv(c.id); } },
-          c.kind === 'group' ? groupAvatar(c) : avatar(c.kind, 32),
-          h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, convTitle(c)), h('div', { class: 'dm-sub' }, c.cwd || ''))));
-      }
+      const match = (...texts) => !q || texts.some(t => (t || '').toLowerCase().includes(q));
+      const actions = paletteActions(conv()).filter(a => match(a.label, a.hint));
+      const convs = S.convs.filter((c) => match(convTitle(c), c.cwd));
+      rows = [...actions.map(a => ({ run: a.run, el: h('button', { class: 'palette-item', role: 'option' }, icon(a.icon, 16),
+        h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, a.label), a.hint ? h('div', { class: 'dm-sub' }, a.hint) : null)) })),
+      ...convs.map(c => ({ run: () => openConv(c.id), el: h('button', { class: 'palette-item', role: 'option' },
+        c.kind === 'group' ? groupAvatar(c) : avatar(c.kind, 24),
+        h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, convTitle(c)), h('div', { class: 'dm-sub' }, c.cwd || ''))) }))];
+      sel = Math.min(sel, Math.max(0, rows.length - 1));
+      rows.forEach((r, i) => {
+        r.el.classList.toggle('sel', i === sel);
+        r.el.setAttribute('aria-selected', String(i === sel));
+        r.el.onclick = () => { close(); r.run(); };
+      });
+      put(list, actions.length ? h('div', { class: 'palette-head' }, '動作') : null, rows.slice(0, actions.length).map(r => r.el),
+        convs.length ? h('div', { class: 'palette-head' }, '對話') : null, rows.slice(actions.length).map(r => r.el),
+        rows.length ? null : h('div', { class: 'mention-empty' }, '沒有符合的動作或對話'));
+      rows[sel]?.el.scrollIntoView({ block: 'nearest' });
     };
-    input.addEventListener('input', paint);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const first = list.querySelector('button'); if (first) first.click(); } });
-    const close = modal({ title: '尋找對話', body: [input, list] });
+    input.addEventListener('input', () => { sel = 0; paint(); });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (rows.length) sel = (sel + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+        paint();
+      } else if (e.key === 'Enter' && !e.isComposing && rows[sel]) { e.preventDefault(); close(); rows[sel].run(); }
+    });
+    const close = modal({ title: '指令面板', body: [input, list] });
     paint();
+    input.focus();
   }
   document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); quickSwitcher(); }
@@ -2540,6 +2809,8 @@
       h('div', { class: 'ss-group' }, 'CCA'),
       item('themes', '外觀'),
       item('layout', '版面與閱讀'),
+      item('notify', '通知'),
+      item('schedules', '排程任務'),
       item('extensions', 'CCA 插件'),
       item('git', '版本控制'),
       item('updates', '軟體更新'),
@@ -2556,8 +2827,16 @@
     else if (sec === 'routing') appearance.routingPage(content, conv());
     else if (sec === 'layout') desk.settings(content);
     else if (sec === 'updates') desk.updateSettings(content);
-    else if (sec === 'git') git.rulesPage(content);
+    else if (sec === 'git') {
+      git.rulesPage(content);
+      content.append(h('h2', {}, '開工前檢查'),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.settings.dirtyCheck !== false,
+          onchange: e => send({ type: 'dirtycheck.set', enabled: e.target.checked }) }), '群組任務開始前，專案有我還沒提交的修改時先停下來問我'),
+        h('p', { class: 'hint' }, '避免 AI 的修改和你自己的修改混在同一份 Git 差異裡。只檢查群組與多代理流程；私訊不檢查。'));
+    }
     else if (sec === 'resume') renderResumeSection(content);
+    else if (sec === 'notify') renderNotifySection(content);
+    else if (sec === 'schedules') renderSchedulesSection(content);
     else if (sec === 'advanced') renderAdvancedSection(content);
     else renderAboutSection(content);
     const main = h('div', { class: 'settings-main' }, content,
@@ -2634,6 +2913,45 @@
         h('input', { class: 'input', type: 'time', value: st.window.to, 'aria-label': '結束時間', onchange: e => { st.window.to = e.target.value; save(); } }),
         h('span', { class: 'hint' }, '例如晚上 23:00 到早上 07:00，跨午夜也可以')),
       h('p', { class: 'hint' }, '這些等待時間也決定「跳過」的成員多久後再試一次。帳號已停用的 Gemini 不算可恢復的成員。'));
+  }
+
+  // Requests sent at chosen times while CCA is open; group task limits and every confirmation still apply.
+  function renderSchedulesSection(box) {
+    const list = S.settings.schedules || [];
+    const DAYS = ['日', '一', '二', '三', '四', '五', '六'];
+    const convSel = h('select', { class: 'select', 'aria-label': '對話' }, S.convs.map(c => h('option', { value: c.id }, convTitle(c))));
+    const time = h('input', { class: 'input', type: 'time', value: '02:00', 'aria-label': '時間' });
+    const dayBoxes = DAYS.map((d, i) => h('label', { class: 'check inline' }, h('input', { type: 'checkbox', checked: i >= 1 && i <= 5, value: i }), d));
+    const text = h('textarea', { class: 'input', rows: 3, 'aria-label': '需求', placeholder: '例如：跑一次全部測試，修掉失敗的，最後列出改了什麼' });
+    box.append(h('h2', {}, '排程任務'),
+      h('p', { class: 'hint' }, '在指定時間把你的需求送進對話。只在 CCA 開著時執行；超過一小時才想起來（例如 CCA 當時關著）就跳過當天。對話正在工作時這次不送出。群組的任務上限、權限與所有確認照常適用；CCA 不會自動推送或合併。'),
+      list.length ? h('div', { class: 'schedule-list' }, list.map(s => h('div', { class: 'schedule-row' },
+        h('div', { class: 'dm-text' }, h('div', { class: 'dm-name' }, `${s.time}　週${s.days.map(d => DAYS[d]).join('、')}　${convTitle(conv(s.convId) || { kind: '', name: '（已刪除的對話）' })}`),
+          h('div', { class: 'dm-sub' }, s.text)),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: s.enabled !== false,
+          onchange: e => send({ type: 'schedule.save', schedule: { ...s, enabled: e.target.checked } }) }), '啟用'),
+        h('button', { class: 'btn sm ghost', onclick: () => send({ type: 'schedule.remove', scheduleId: s.id }) }, '刪除')))) :
+        h('p', { class: 'hint' }, '還沒有排程。'),
+      h('h3', {}, '新增排程'),
+      h('div', { class: 'field' }, h('label', {}, '對話'), convSel),
+      h('div', { class: 'field' }, h('label', {}, '時間'), time),
+      h('div', { class: 'field' }, h('label', {}, '星期'), h('div', { class: 'schedule-days' }, dayBoxes)),
+      h('div', { class: 'field' }, h('label', {}, '需求'), text),
+      h('button', { class: 'btn primary', onclick: () => send({ type: 'schedule.save', schedule: { convId: convSel.value, time: time.value,
+        days: dayBoxes.map(l => l.querySelector('input')).filter(i => i.checked).map(i => +i.value), text: text.value, enabled: true } }) }, '新增'));
+  }
+
+  function renderNotifySection(box) {
+    const on = (S.settings.notifications || {}).enabled !== false;
+    box.append(h('h2', {}, '通知'),
+      h('p', { class: 'hint' }, 'CCA 不在前景時，用 Windows 通知告訴你需要回來處理的事；點通知會直接打開那個對話。CCA 在前景時不發通知。'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: on,
+        onchange: e => send({ type: 'notifications.set', enabled: e.target.checked }) }), '開啟 Windows 通知'),
+      h('ul', { class: 'hint' },
+        h('li', {}, '需要你核准或回答問題'),
+        h('li', {}, '協作或多代理流程暫停、完成，或因額度用完而停止'),
+        h('li', {}, '私訊的回覆超過 20 秒才完成')),
+      h('p', { class: 'hint' }, '終端機版在同樣的時機響一聲提示音（/notify on|off）。'));
   }
 
   function renderHumanizeSection(box) {
@@ -3234,7 +3552,7 @@
   // ================================================================ start
   // Mock mode only: lets mock.js jump straight to a screen for visual checks.
   if (window.MockBackend) {
-    window.CCA_DEV = { openGit: id => openGit(S.convs.find(x => x.id === id) || conv()), openView, openConv, settingsDialog, createGroupDialog, showHelp, openSettings,
+    window.CCA_DEV = { openGit: id => openGit(S.convs.find(x => x.id === id) || conv()), openView, openConv, conv, settingsDialog, createGroupDialog, showHelp, openSettings,
       rollbackFirst: () => { const m = (S.msgs[S.current] || []).find((x) => x.snapshot); if (m) rollbackDialog(m); },
       openModelPicker: (agent) => { const el = chat.head.querySelector('.head-facts'); if (el) modelPicker(el, conv(), agent); },
       openOps: () => { const el = chat.head.querySelector('.head-facts'); if (el) opsPanel(el, conv()); },
@@ -3243,7 +3561,7 @@
   }
   // Screenshots and image artifacts live in the host's media folder (served as https://media.cca.app/).
   const mediaUrl = (file) => /^(data:image\/|https?:)/.test(file || '') ? file : file ? 'https://media.cca.app/' + encodeURIComponent(file) : '';
-  window.CCAPlatform?.setup({ h, send, modal, mediaUrl, toast, getModels: () => S.models, getLocal: () => S.local || {},
+  window.CCAPlatform?.setup({ h, send, request, modal, mediaUrl, toast, getModels: () => S.models, getLocal: () => S.local || {},
     getProfiles: () => S.settings.reviewProfiles || [] });
   window.CCACollaboration?.setup({ h, put, send, modal, icon, avatar, name: displayName, markdown: text => MD.render(text),
     settings: () => S.settings, state: stateOf, conv, openConv, jump: id => {
