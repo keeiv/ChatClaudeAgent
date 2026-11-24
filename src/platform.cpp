@@ -170,8 +170,9 @@ bool App::handlePlatform(const Json& m) {
             bool okName = !file.empty() && file.size() <= 40;
             for (unsigned char ch : file) okName &= isalnum(ch) || ch == '-' || ch == '_';
             if (!okName) error = "範本檔名只能用英文字母、數字、- 和 _，最多 40 字";
-            else if (!validatePipeline(m["pipeline"], &error)) {
-            } else {
+            // validatePipeline fills `error`, so a valid name and pipeline leave it empty.
+            else validatePipeline(m["pipeline"], &error);
+            if (error.empty()) {
                 util::ensureDir(util::joinPath(c->cwd, L".cca"));
                 util::ensureDir(dir);
                 Json doc = J({{"name", util::truncateUtf8(m["name"].str(file), 80)},

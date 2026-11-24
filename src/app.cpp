@@ -2038,9 +2038,9 @@ void App::onUiMessage(const std::string& text) {
                               "提交到同一個分支。");
     } else if (type == "group.startAnyway") {
         if (c->kind != "group" || c->pendingStart.empty() || c->group.active || anyBusy(*c)) return;
-        const std::string text = c->pendingStart;
+        const std::string held = c->pendingStart;
         c->pendingStart.clear();
-        groupStart(*c, text);
+        groupStart(*c, held);
         sendConvs();
     } else if (type == "conv.stop") {
         c->userStopped = true;
