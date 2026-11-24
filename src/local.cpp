@@ -439,6 +439,7 @@ void App::groupProceed(Conversation& c) {
     g.localNotes.clear();
     AgentKind next = g.nextAgent == "codex"    ? AgentKind::Codex
                      : g.nextAgent == "gemini" ? AgentKind::Gemini
+                     : g.nextAgent == "cursor" ? AgentKind::Cursor
                                                : AgentKind::Claude;
     groupHandOff(c, next, prompt, g.nextPhase);
 }

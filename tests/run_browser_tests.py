@@ -17,6 +17,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS = ["markdown_links.cjs", "desktop_smoke.cjs", "workflow_ui.cjs", "guard_browser.cjs",
          "desk_browser.cjs", "appearance_browser.cjs", "message_bounds_browser.cjs", "platform_browser.cjs",
          "collaboration_browser.cjs", "mcp_pin_browser.cjs", "group_navigation_browser.cjs", "pipeline_models_browser.cjs", "git_browser.cjs", "gemini_browser.cjs",
+         "cursor_browser.cjs",
          "visual_identity_browser.cjs", "editions_browser.cjs"]
 
 

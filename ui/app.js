@@ -86,6 +86,9 @@
     gemini: { name: 'Gemini', letter: 'G', mark: 'Ge', vendor: 'Google', cli: 'Gemini CLI', role: '審查者', color: 'var(--gemini)',
       upgrade: 'https://geminicli.com/plans/', notice: 'https://geminicli.com/docs/resources/quota-and-pricing/',
       install: 'npm install -g @google/gemini-cli', installNote: '需要先安裝 Node.js，然後執行：' },
+    cursor: { name: 'Cursor', letter: 'C', mark: 'Cu', vendor: 'Cursor', cli: 'Cursor CLI', role: '審查者', color: 'var(--cursor)',
+      upgrade: 'https://cursor.com/pricing', notice: 'https://cursor.com/docs/cli/installation',
+      install: "irm 'https://cursor.com/install?win32=true' | iex", installNote: '在 PowerShell 執行（官方安裝程式）：' },
     claude: { name: 'Claude', letter: 'C', mark: 'C', vendor: 'Anthropic', cli: 'Claude Code', role: '撰寫者', color: 'var(--claude)',
       upgrade: 'https://claude.ai/upgrade', install: 'irm https://claude.ai/install.ps1 | iex', installNote: '在 PowerShell 執行（官方安裝程式）：' },
     codex: { name: 'GPT', letter: 'G', mark: 'G', vendor: 'OpenAI', cli: 'Codex', role: '審查者', color: 'var(--codex)',
@@ -96,13 +99,17 @@
   const isLocalAgent = (a) => a === 'local1' || a === 'local2';
   const PERMS = {
     plan: { label: '規劃模式', icon: 'eye', desc: '只閱讀和分析，不修改檔案，先提出計畫給你核准。',
-      claude: 'Claude：plan', codex: 'GPT：唯讀沙箱', gemini: 'Gemini：此模式不啟動，避免放寬唯讀限制' },
+      claude: 'Claude：plan', codex: 'GPT：唯讀沙箱', gemini: 'Gemini：此模式不啟動，避免放寬唯讀限制',
+      cursor: 'Cursor：此模式不啟動，無介面執行會直接寫入工作區' },
     ask: { label: '每次詢問', icon: 'shield', desc: '修改檔案、執行指令之前都會先問你。',
-      claude: 'Claude：default（手動確認）', codex: 'GPT：唯讀沙箱＋需要時詢問', gemini: 'Gemini：default，需要互動確認的工具會被拒絕' },
+      claude: 'Claude：default（手動確認）', codex: 'GPT：唯讀沙箱＋需要時詢問', gemini: 'Gemini：default，需要互動確認的工具會被拒絕',
+      cursor: 'Cursor：此模式不啟動，無介面執行不能逐項詢問' },
     edit: { label: '自動編輯', icon: 'pencil', desc: '專案資料夾內的修改自動允許；其他指令和網路存取仍會先問你。',
-      claude: 'Claude：acceptEdits', codex: 'GPT：工作區可寫＋需要時詢問', gemini: 'Gemini：auto_edit，需要互動確認的工具會被拒絕' },
+      claude: 'Claude：acceptEdits', codex: 'GPT：工作區可寫＋需要時詢問', gemini: 'Gemini：auto_edit，需要互動確認的工具會被拒絕',
+      cursor: 'Cursor：不加 --force，工作區內直接修改，允許清單以外的指令會被拒絕；專案的 .cursor/cli.json 若另外允許指令則不啟動' },
     bypass: { label: '跳過所有確認', icon: 'bolt', danger: true, desc: '完全不詢問。AI 可以直接改任何檔案、執行任何指令、連上網路。',
-      claude: 'Claude：bypassPermissions', codex: 'GPT：完全存取，不詢問', gemini: 'Gemini：yolo，不詢問' },
+      claude: 'Claude：bypassPermissions', codex: 'GPT：完全存取，不詢問', gemini: 'Gemini：yolo，不詢問',
+      cursor: 'Cursor：--force，不詢問' },
   };
   const PHASES = { selfcheck: '自查', write: '撰寫', review: '審查', recheck: '複審', verify: '驗證', advise: '唯讀審查' };
   const PHASE_SHORT = { ...PHASES, advise: '唯讀' };  // narrow columns (the timeline)
@@ -146,7 +153,7 @@
     inboxJump: null,
     quality: {},
     user: { name: '使用者' },
-    auth: { claude: { state: 'checking' }, codex: { state: 'checking' }, gemini: { state: 'checking' }, ok: false },
+    auth: { claude: { state: 'checking' }, codex: { state: 'checking' }, gemini: { state: 'checking' }, cursor: { state: 'checking' }, ok: false },
     convs: [],
     groupOrder: [],
     lastDm: '',
@@ -159,9 +166,9 @@
     unread: {},
     view: 'chat',
     current: null,
-    models: { claude: [], codex: [], gemini: [] },
+    models: { claude: [], codex: [], gemini: [], cursor: [] },
     panelTab: store.get('panelTab', ''),
-    usage: { claude: {}, codex: {}, gemini: {} },
+    usage: { claude: {}, codex: {}, gemini: {}, cursor: {} },
     settings: {},
     plugins: { claude: null, codex: null },
     mcp: { claude: null, codex: null },
@@ -732,9 +739,9 @@
     const agent = c.kind;
     let sub;
     if ((st.typing || []).includes(agent)) sub = '正在回覆…';
-    else if ((S.auth[agent] || {}).state !== 'ok') sub = agent === 'gemini' ? stateText(S.auth.gemini?.state) : '尚未通過訂閱檢查';
+    else if ((S.auth[agent] || {}).state !== 'ok') sub = agent === 'gemini' || agent === 'cursor' ? stateText(S.auth[agent]?.state) : '尚未通過訂閱檢查';
     else if (c.daily) sub = '日常模式';
-    else sub = (agent === 'gemini' ? 'CLI 預設模型' : modelLabel(agent, agent === 'claude' ? c.claudeModel : c.codexModel)) + (c.cwd ? ' · ' + baseName(c.cwd) : '');
+    else sub = selectionLabel(c, agent) + (c.cwd ? ' · ' + baseName(c.cwd) : '');
     return h('button', { class: `dm${active ? ' active' : ''}${S.unread[c.id] ? ' unread' : ''}`, type: 'button',
       'data-nav-id': 'dm:' + c.id, onclick: () => openConv(c.id), onkeydown: event => rowKey(event) },
     avatar(c.kind, 28, agentStatus(c.kind, c.id)),
@@ -745,7 +752,7 @@
   function renderUserbar() {
     const ub = $('#userbar');
     const ok = S.auth.ok;
-    const plans = ['claude', 'codex', 'gemini'].filter(a => S.auth[a]?.state === 'ok').map(a => S.auth[a].planLabel || AGENTS[a].name);
+    const plans = ['claude', 'codex', 'gemini', 'cursor'].filter(a => S.auth[a]?.state === 'ok').map(a => S.auth[a].planLabel || AGENTS[a].name);
     put(ub,
       h('button', { class: 'who', type: 'button', 'aria-label': '訂閱與用量', 'data-tip': '訂閱與用量', onclick: () => openView('account') }, avatar('user', 28, ok ? 'ok' : 'wait'),
         h('div', { style: { minWidth: 0 } },
@@ -868,6 +875,16 @@
       if (!c.cwd && !c.daily) return { ok: false, why: '先選擇專案資料夾' };
       return c.folderMissing && !c.daily ? { ok: false, why: '找不到專案資料夾' } : { ok: true };
     }
+    if (c.kind === 'cursor') {
+      // Mirrors the host's refusals (App::sendToAgent), so the reason shows before anything is sent.
+      const cu = S.auth.cursor || {};
+      if (cu.state !== 'ok') return { ok: false, why: cu.message || 'Cursor 帳號尚未通過檢查' };
+      if (c.daily) return { ok: false, why: 'Cursor CLI 不能逐項詢問，不提供日常模式' };
+      if (!c.cursorModel) return { ok: false, why: '先從 Cursor 的模型清單選一個模型（例如 Grok）' };
+      if (c.permission === 'plan' || c.permission === 'ask') return { ok: false, why: 'Cursor 需要「自動編輯」或「跳過所有確認」權限' };
+      if (!c.cwd) return { ok: false, why: '先選擇專案資料夾' };
+      return c.folderMissing ? { ok: false, why: '找不到專案資料夾' } : { ok: true };
+    }
     if (!S.auth.ok && !pipeline) return { ok: false, why: '請先登入 Claude 或 GPT，或配置 API 流程' };
     const lead = c.kind === 'codex' ? 'codex' : (c.lead || 'claude');
     const ready = (S.auth[lead] || {}).state === 'ok';
@@ -960,7 +977,7 @@
       if (!nodes) rows.push(row('主刀', seg([['claude', displayName('claude')], ['codex', displayName('codex')]], c.lead || 'claude', (v) => set({ lead: v }))));
       rows.push(row('多代理流程', chip({ class: 'chip keep', onclick: () => { closePop(); window.CCAPlatform.edit(c); } },
         icon('users', 14), h('span', {}, nodes ? `${nodes} 位代理` : '雙方協作'), icon('chevron', 14))));
-    } else if (!special()) {
+    } else if (!special() && c.kind !== 'cursor') {
       rows.push(row('日常模式', toggle(daily, daily ? '開啟：最省額度的模型' : '關閉', () => set({ daily: !daily }))));
     }
     if (special() && !nodes) {
@@ -975,13 +992,19 @@
             h('span', {}, selectionLabel(c, a)), icon('chevron', 14))));
       }
     }
+    if (c.kind === 'group' && c.cursorMember && !nodes) rows.push(cursorModelRow(c, row));
     if (c.kind === 'group' && !nodes) {
       const g = S.auth.gemini || {};
       rows.push(row('Gemini 成員', toggle(!!c.geminiMember, c.geminiMember ? '已加入：第三位審查者' : '未加入',
         () => set({ geminiMember: !c.geminiMember }), { disabled: busy, 'data-tip': g.state === 'ok' ? '在 GPT 之後審查並可直接修改'
           : (g.message || stateText(g.state)) + '；加入後輪到時會跳過' })));
+      const cu = S.auth.cursor || {};
+      rows.push(row('Cursor 成員', toggle(!!c.cursorMember, c.cursorMember ? `已加入：第${c.geminiMember ? '四' : '三'}位審查者` : '未加入',
+        () => set({ cursorMember: !c.cursorMember }), { disabled: busy, 'data-tip': cu.state === 'ok'
+          ? '用 Cursor 的模型（例如 Grok）審查並可直接修改；需要「自動編輯」以上權限'
+          : (cu.message || stateText(cu.state)) + '；加入後輪到時會跳過' })));
     }
-    if (c.kind !== 'codex' && c.kind !== 'gemini' && !nodes && !daily) {
+    if (c.kind !== 'codex' && c.kind !== 'gemini' && c.kind !== 'cursor' && !nodes && !daily) {
       const group = c.kind === 'group';
       rows.push(row('額度用完時',
         toggle(c.autoFallback !== false, c.autoFallback !== false ? (group ? '跳過，交給下一位' : `交給 ${displayName('codex')}`) : '先問我',
@@ -1065,6 +1088,12 @@
     if (c.kind === 'gemini' && (S.auth.gemini || {}).state !== 'ok') {
       b.append(h('div', { class: 'banner warn' }, icon('alert', 18), (S.auth.gemini || {}).message || 'Gemini 帳號尚未通過檢查。',
         h('button', { class: 'link-btn', onclick: () => openView('account') }, '查看狀態')));
+    } else if (c.kind === 'cursor' && (S.auth.cursor || {}).state !== 'ok') {
+      b.append(h('div', { class: 'banner warn' }, icon('alert', 18), (S.auth.cursor || {}).message || 'Cursor 帳號尚未通過檢查。',
+        h('button', { class: 'link-btn', onclick: () => openView('account') }, '查看狀態')));
+    } else if (c.kind === 'cursor' && !c.cursorModel) {
+      b.append(h('div', { class: 'banner info' }, icon('info', 18), '先選擇這個對話要用的 Cursor 模型，Grok 系列排在最前面。',
+        h('button', { class: 'link-btn', onclick: (ev) => cursorModelPicker(ev.currentTarget, c) }, '選擇模型')));
     } else if (c.kind === 'gemini' && c.daily) {
       b.append(h('div', { class: 'banner info' }, icon('chart', 18), '日常模式：用 Gemini CLI 預設模型聊天；無介面的 Gemini 不能逐項詢問，因此不會修改檔案或執行指令。',
         h('button', { class: 'link-btn', onclick: () => send({ type: 'conv.settings', id: c.id, settings: { daily: false } }) }, '回到工作模式')));
@@ -1146,7 +1175,7 @@
     return h('div', { class: 'welcome' },
       avatar(c.kind, 80),
       h('h3', {}, convTitle(c)),
-      h('p', {}, `這是你和 ${convTitle(c)} 私訊的開頭。${convTitle(c)} 透過 ${a.vendor} 的 ${a.cli} 在你的電腦上工作，使用你自己的訂閱額度。`),
+      h('p', {}, `這是你和 ${convTitle(c)} 私訊的開頭。${convTitle(c)} 透過 ${a.cli.startsWith(a.vendor) ? a.cli : a.vendor + ' 的 ' + a.cli} 在你的電腦上工作，使用你自己的訂閱額度。`),
       h('div', { class: 'row' },
         h('button', { class: 'btn primary', onclick: () => pickFolder(c) }, icon('folder', 16), c.cwd ? '更換專案資料夾' : '選擇專案資料夾'),
         c.cwd ? h('span', { class: 'mono muted', style: { fontSize: '13px' } }, c.cwd) : null));
@@ -1258,6 +1287,7 @@
   const shortModel = (agent, model, effort) => modelLabel(agent, model).replace(/s*[（(].*$/, '') + (effort ? ' ' + effortLabel(effort) : '');
   function selectionLabel(c, agent) {
     if (agent === 'gemini') return 'Gemini CLI 預設模型';
+    if (agent === 'cursor') return c.cursorModel ? modelLabel('cursor', c.cursorModel) : '尚未選擇模型';
     const auto = c.adaptive?.[agent] || {};
     const model = agent === 'claude' ? c.claudeModel : c.codexModel;
     const effort = agent === 'claude' ? c.claudeEffort : c.codexEffort;
@@ -1724,6 +1754,8 @@
       const l = u.limits || {};
       if (l.primary) out.push(meter('5 小時額度', l.primary.usedPercent, `已用 ${l.primary.usedPercent}% · ${untilReset(l.primary.resetsAt)}`));
       if (l.secondary) out.push(meter('每週額度', l.secondary.usedPercent, `已用 ${l.secondary.usedPercent}% · ${untilReset(l.secondary.resetsAt)}`));
+    } else if (agent === 'cursor') {
+      out.push(h('div', { class: 'hint' }, 'Cursor CLI 沒有提供剩餘額度；額度不足時以 Cursor 回報的錯誤為準，CCA 不推算。'));
     } else if (agent === 'gemini') {
       const quota = u.quota || {};
       for (const b of quota.buckets || []) {
@@ -1778,22 +1810,24 @@
       p.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '權限模式'), permList(c)));
       return;
     }
-    p.append(
+    // put-style children: a headless CLI has no plugin card, and a bare null would print as text.
+    p.append(...[
       h('div', { class: 'agent-head' }, avatar(agent, 36, agentStatus(agent, c.id)),
         h('div', { class: 'agent-id' }, h('div', { class: 'agent-name' }, convTitle(c)),
-          h('div', { class: 'agent-cli' }, `${a.vendor} · ${a.cli}${au.version ? ' ' + au.version : ''}`)),
+          h('div', { class: 'agent-cli' }, `${a.cli.startsWith(a.vendor) ? a.cli : a.vendor + ' · ' + a.cli}${au.version ? ' ' + au.version : ''}`)),
         h('span', { class: `plan-badge ${okPlan ? 'ok' : 'bad'}` }, au.planLabel || (okPlan ? '已訂閱' : '未通過檢查'))),
       h('div', { class: 'card' }, h('div', { class: 'card-title' }, '目前設定'),
-        agent === 'gemini' ? h('div', { class: 'kv' }, h('span', {}, '模型'), h('span', {}, 'Gemini CLI 預設（CLI 未提供模型目錄）')) : [
+        agent === 'gemini' ? h('div', { class: 'kv' }, h('span', {}, '模型'), h('span', {}, 'Gemini CLI 預設（CLI 未提供模型目錄）'))
+          : agent === 'cursor' ? h('div', { class: 'kv' }, h('span', {}, '模型'), h('span', {}, selectionLabel(c, 'cursor'))) : [
           c.daily ? h('div', { class: 'kv' }, h('span', {}, '日常模式'), h('span', {}, modelWithEffort(agent, dailyPick(agent).model, dailyPick(agent).effort))) : null,
           h('div', { class: 'kv' }, h('span', {}, c.daily ? '工作模式的模型' : '模型'), h('span', {}, modelLabel(agent, agent === 'claude' ? c.claudeModel : c.codexModel))),
           h('div', { class: 'kv' }, h('span', {}, '思考程度'), h('span', {}, effortLabel(agent === 'claude' ? c.claudeEffort : c.codexEffort) || '模型預設'))],
         h('div', { class: 'kv' }, h('span', {}, '權限'), h('span', {}, (PERMS[c.permission] || PERMS.edit).label)),
         h('div', { class: 'kv' }, h('span', {}, '專案資料夾'), h('span', { 'data-tip': c.cwd }, c.cwd || '未選擇'))),
-      h('div', { class: 'card' }, h('div', { class: 'card-title' }, '用量', h('button', { class: 'act', onclick: () => send({ type: agent === 'gemini' ? 'auth.check' : 'usage.refresh', agent }) }, '更新')), usageBlock(agent)),
-      agent === 'gemini' ? null : h('div', { class: 'card' }, h('div', { class: 'card-title' }, '插件', h('button', { class: 'act', onclick: () => { S.pluginTab = agent; openView('plugins'); } }, '管理')),
+      h('div', { class: 'card' }, h('div', { class: 'card-title' }, '用量', h('button', { class: 'act', onclick: () => send({ type: agent === 'gemini' || agent === 'cursor' ? 'auth.check' : 'usage.refresh', agent }) }, '更新')), usageBlock(agent)),
+      agent === 'gemini' || agent === 'cursor' ? null : h('div', { class: 'card' }, h('div', { class: 'card-title' }, '插件', h('button', { class: 'act', onclick: () => { S.pluginTab = agent; openView('plugins'); } }, '管理')),
         h('div', { class: 'muted', style: { fontSize: '13px' } }, pluginSummary(agent))),
-    );
+    ].filter(Boolean));
   }
   function pluginSummary(agent) {
     const pl = S.plugins[agent];
@@ -1881,11 +1915,14 @@
     const doing = (a) => typing.includes(a) ? (PHASES[g.phase] || '處理') + '中…'
       : c.exhausted?.[a] || (a === 'claude' && c.claudeLimited) ? '額度不足 · 輪到時跳過'
         : a === 'gemini' ? (S.auth.gemini?.state === 'ok' ? 'Gemini CLI 預設模型' : stateText(S.auth.gemini?.state) + ' · 輪到時跳過')
-          : modelLabel(a, a === 'claude' ? c.claudeModel : c.codexModel);
+          : a === 'cursor' ? (S.auth.cursor?.state !== 'ok' ? stateText(S.auth.cursor?.state) + ' · 輪到時跳過'
+            : c.cursorModel ? modelLabel('cursor', c.cursorModel) : '尚未選擇模型 · 輪到時跳過')
+            : modelLabel(a, a === 'claude' ? c.claudeModel : c.codexModel);
     const group = (title, items) => (items.length ? [h('div', { class: 'member-head' }, `${title} — ${items.length}`), ...items] : []);
     p.append(...group('主刀', [member(lead, displayName(lead), doing(lead))]),
       ...group('審查', [member(second, displayName(second), doing(second)),
-        c.geminiMember ? member('gemini', displayName('gemini'), doing('gemini')) : null].filter(Boolean)),
+        c.geminiMember ? member('gemini', displayName('gemini'), doing('gemini')) : null,
+        c.cursorMember ? member('cursor', displayName('cursor'), doing('cursor')) : null].filter(Boolean)),
       ...group('唯讀審查員', (c.localMembers || []).map((l) => member(l, displayName(l),
         typing.includes(l) ? '唯讀審查中…' : (((S.settings.locals || {})[l] || {}).model || '尚未設定模型')))));
     p.append(h('div', { class: 'card' }, h('div', { class: 'card-title' }, '額度'),
@@ -2209,6 +2246,36 @@
         '換思考程度會在下一則訊息時重新啟動 Claude，對話內容會接續。') : null], 'wide');
   }
 
+  function cursorModelRow(c, row) {
+    return row(displayName('cursor') + ' 模型', chip({ class: 'chip keep', onclick: (ev) => cursorModelPicker(ev.currentTarget, c) }, avatar('cursor', 16),
+      h('span', {}, selectionLabel(c, 'cursor')), icon('chevron', 14)));
+  }
+  // Cursor lists a few hundred model ids for an account; Grok comes first and a filter narrows the rest.
+  function cursorModelPicker(anchor, c) {
+    const list = S.models.cursor || [];
+    const cur = c.cursorModel || '';
+    const box = h('div', { class: 'cursor-models' });
+    const pick = (value) => { send({ type: 'conv.settings', id: c.id, settings: { cursorModel: value } }); closePop(); };
+    const item = (m) => h('button', { class: `pop-item${m.value === cur ? ' sel' : ''}`, type: 'button', onclick: () => pick(m.value) },
+      h('div', {}, h('div', {}, m.displayName || m.value), h('div', { class: 'pd mono' }, m.value)),
+      m.value === cur ? h('span', { class: 'tick' }, icon('check', 16)) : null);
+    const draw = (query) => {
+      const term = query.trim().toLowerCase();
+      const hit = list.filter(m => !term || ((m.value || '') + ' ' + (m.displayName || '')).toLowerCase().includes(term));
+      const grok = hit.filter(m => /grok/i.test(m.value)), rest = hit.filter(m => !/grok/i.test(m.value));
+      put(box, grok.length ? [h('div', { class: 'pop-title' }, 'Grok'), grok.map(item)] : null,
+        rest.length ? [h('div', { class: 'pop-title' }, term ? '其他符合的模型' : '其他模型'), rest.slice(0, term ? 200 : 30).map(item)] : null,
+        !hit.length ? h('div', { class: 'pop-item' }, h('div', { class: 'pd' },
+          list.length ? '沒有符合的模型。' : '還沒拿到 Cursor 的模型清單，請到「訂閱與用量」重新檢查。')) : null);
+    };
+    const filter = h('input', { class: 'input', type: 'search', placeholder: '篩選，例如 grok 4.7', 'aria-label': '篩選 Cursor 模型',
+      oninput: (e) => draw(e.target.value) });
+    draw('');
+    popover(anchor, [h('div', { class: 'pop-title' }, `${displayName('cursor')}：${selectionLabel(c, 'cursor')}`), filter, box,
+      h('div', { class: 'pd cursor-models-note' }, '清單來自 Cursor CLI 回報的帳號可用模型；思考程度已包含在模型名稱裡。')], 'wide');
+    filter.focus();
+  }
+
   function permPicker(anchor, c) {
     popover(anchor, [h('div', { class: 'pop-title' }, '權限模式'),
       Object.entries(PERMS).map(([k, p]) => h('button', { class: `pop-item${c.permission === k ? ' sel' : ''}`, onclick: () => { closePop(); setPermission(c, k); } },
@@ -2365,6 +2432,7 @@
     const cp = h('input', { class: 'input mono', value: S.settings.claudePath || '', placeholder: (S.auth.claude && S.auth.claude.exe) || '自動偵測' });
     const xp = h('input', { class: 'input mono', value: S.settings.codexPath || '', placeholder: (S.auth.codex && S.auth.codex.exe) || '自動偵測' });
     const gp = h('input', { class: 'input mono', value: S.settings.geminiPath || '', placeholder: S.auth.gemini?.exe || '自動偵測' });
+    const up = h('input', { class: 'input mono', value: S.settings.cursorPath || '', placeholder: S.auth.cursor?.exe || '自動偵測' });
     modal({
       title: '設定',
       wide: true,
@@ -2372,14 +2440,16 @@
         h('div', { class: 'field' }, h('label', {}, 'Claude Code 執行檔'), cp, h('div', { class: 'hint' }, '留空會自動尋找：PATH、%USERPROFILE%\\.local\\bin、npm 全域安裝。')),
         h('div', { class: 'field' }, h('label', {}, 'Codex 執行檔'), xp, h('div', { class: 'hint' }, '留空會自動尋找 PATH 和 npm 全域安裝。')),
         h('div', { class: 'field' }, h('label', {}, 'Gemini CLI 執行檔'), gp, h('div', { class: 'hint' }, '使用官方 npm 安裝的 gemini.cmd；帳號方案與額度查詢需要 Node.js。')),
+        h('div', { class: 'field' }, h('label', {}, 'Cursor CLI 安裝位置'), up, h('div', { class: 'hint' }, '留空會使用 %LOCALAPPDATA%\\cursor-agent 裡最新的版本；也可以填安裝資料夾、版本資料夾或它的 index.js。')),
         h('div', { class: 'field' }, h('label', {}, '關於'),
           h('div', { class: 'kv' }, h('span', {}, 'ChatClaudeAgent 版本'), h('span', {}, S.version || '-')),
           h('div', { class: 'kv' }, h('span', {}, 'Claude Code'), h('span', {}, (S.auth.claude && S.auth.claude.version) || '-')),
           h('div', { class: 'kv' }, h('span', {}, 'Codex'), h('span', {}, (S.auth.codex && S.auth.codex.version) || '-')),
-          h('div', { class: 'hint' }, '對話紀錄存在 %APPDATA%\\CCA。任務會傳送至啟用的 Anthropic、OpenAI、Google 或自訂供應商。')),
+          h('div', { class: 'kv' }, h('span', {}, 'Cursor CLI'), h('span', {}, (S.auth.cursor && S.auth.cursor.version) || '-')),
+          h('div', { class: 'hint' }, '對話紀錄存在 %APPDATA%\\CCA。任務會傳送至啟用的 Anthropic、OpenAI、Google、Cursor 或自訂供應商。')),
       ],
       foot: (close) => [h('button', { class: 'btn ghost', onclick: close }, '取消'),
-        h('button', { class: 'btn primary', onclick: () => { send({ type: 'settings.set', settings: { claudePath: cp.value.trim(), codexPath: xp.value.trim(), geminiPath: gp.value.trim() } }); close(); } }, '儲存')],
+        h('button', { class: 'btn primary', onclick: () => { send({ type: 'settings.set', settings: { claudePath: cp.value.trim(), codexPath: xp.value.trim(), geminiPath: gp.value.trim(), cursorPath: up.value.trim() } }); close(); } }, '儲存')],
     });
   }
 
@@ -2539,7 +2609,7 @@
   function renderResumeSection(body) {
     const r = S.settings.autoResume || {}, fb = r.fallback || {}, win = r.window || {};
     const st = { enabled: !!r.enabled, delayMinutes: r.delayMinutes ?? 3, maxAttempts: r.maxAttempts ?? 3,
-      fallback: { claude: fb.claude ?? 300, codex: fb.codex ?? 300, gemini: fb.gemini ?? 60 },
+      fallback: { claude: fb.claude ?? 300, codex: fb.codex ?? 300, gemini: fb.gemini ?? 60, cursor: fb.cursor ?? 60 },
       window: { enabled: !!win.enabled, from: win.from || '00:00', to: win.to || '08:00' } };
     const save = () => send({ type: 'autoResume.set', settings: st });
     const number = (key, label, value, min, max, set, hint) => h('div', { class: 'field' }, h('label', { for: 'resume-' + key }, label),
@@ -2554,7 +2624,8 @@
         number('attempts', '最多自動接續幾次', st.maxAttempts, 1, 20, v => { st.maxAttempts = v; }, '每次接續若仍沒有額度會再排下一次'),
         number('claude', displayName('claude') + ' 沒回報重置時間時等待（分鐘）', st.fallback.claude, 1, 10080, v => { st.fallback.claude = v; }),
         number('codex', displayName('codex') + ' 沒回報重置時間時等待（分鐘）', st.fallback.codex, 1, 10080, v => { st.fallback.codex = v; }),
-        number('gemini', displayName('gemini') + ' 沒回報重置時間時等待（分鐘）', st.fallback.gemini, 1, 10080, v => { st.fallback.gemini = v; })),
+        number('gemini', displayName('gemini') + ' 沒回報重置時間時等待（分鐘）', st.fallback.gemini, 1, 10080, v => { st.fallback.gemini = v; }),
+        number('cursor', displayName('cursor') + ' 額度不足時等待（分鐘）', st.fallback.cursor, 1, 10080, v => { st.fallback.cursor = v; })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.window.enabled, disabled: !st.enabled,
         onchange: e => { st.window.enabled = e.target.checked; save(); } }), '只在指定時段接續'),
       h('div', { class: 'resume-window' + (st.enabled && st.window.enabled ? '' : ' off') },
@@ -2601,7 +2672,7 @@
       h('div', { class: 'pe-row', style: { marginTop: '12px' } }, h('button', { class: 'btn secondary sm', onclick: settingsDialog }, '指定執行檔位置')),
       h('h3', {}, '資料'),
       h('div', { class: 'muted', style: { fontSize: '14px', lineHeight: 1.6 } },
-        '對話紀錄與設定存在 %APPDATA%\\CCA。CCA 不會把你的程式碼或對話傳到 Anthropic 和 OpenAI 以外的地方。'));
+        '對話紀錄與設定存在 %APPDATA%\\CCA。CCA 不會把你的程式碼或對話傳到你啟用的 Anthropic、OpenAI、Google、Cursor 或自訂供應商以外的地方。'));
   }
 
   function renderAboutSection(box) {
@@ -2760,6 +2831,7 @@
   // Stacked bars of tokens per day; colors validated with the dataviz validator on #232428.
   const USAGE_SERIES = [
     { key: 'gemini', label: () => displayName('gemini'), color: 'var(--gemini)', agents: ['gemini'] },
+    { key: 'cursor', label: () => displayName('cursor'), color: 'var(--cursor)', agents: ['cursor'] },
     { key: 'claude', label: () => displayName('claude'), color: '#d4794f', agents: ['claude'] },
     { key: 'local', label: () => '本地模型', color: 'var(--local2)', agents: ['local1', 'local2', 'local'] },
     { key: 'api', label: () => 'API 模型', color: 'var(--signal)', agents: ['api'] },
@@ -2778,7 +2850,7 @@
         row.total += row[s.key];
       }
       row.cost = (rec.claude || {}).cost || 0;
-      for (const ag of ['claude', 'codex', 'gemini', 'local1', 'local2', 'api', 'local']) row.turns += (rec[ag] || {}).turns || 0;
+      for (const ag of ['claude', 'codex', 'gemini', 'cursor', 'local1', 'local2', 'api', 'local']) row.turns += (rec[ag] || {}).turns || 0;
       out.push(row);
     }
     return out;
@@ -3020,7 +3092,7 @@
           h('div', { class: 'kv' }, h('span', {}, a.cli + ' 版本'), h('span', {}, au.version || '-')),
           h('div', { class: 'kv' }, h('span', {}, '執行檔'), h('span', { class: 'mono', 'data-tip': au.exe }, au.exe || '找不到')),
           au.message && !ok ? h('div', { class: 'notice-line warn', style: { marginTop: '6px' } }, icon('alert', 15), au.message) : null,
-          agent === 'gemini' && au.state === 'missing' ? h('div', { class: 'codeblock' }, h('pre', {}, h('code', {}, a.install))) : null,
+          (agent === 'gemini' || agent === 'cursor') && au.state === 'missing' ? h('div', { class: 'codeblock' }, h('pre', {}, h('code', {}, a.install))) : null,
           h('div', { class: 'card' }, h('div', { class: 'card-title' }, '額度'), usageBlock(agent), agent === 'claude' ? claudeLiveToggle() : null),
           h('div', { style: { display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' } },
             h('button', { class: 'btn sm secondary', onclick: () => send({ type: 'auth.check', agent }) }, icon('refresh', 14), '重新檢查'),
@@ -3028,15 +3100,15 @@
               au.state === 'retired' ? '改用其他帳號登入' : '登入') : null,
             au.state === 'retired' ? h('button', { class: 'btn sm primary', onclick: () => send({ type: 'open', target: a.notice }) }, '查看官方說明') : null,
             au.state === 'noPlan' ? h('button', { class: 'btn sm success', onclick: () => send({ type: 'open', target: a.upgrade }) }, '升級方案') : null,
-            ok && agent !== 'gemini' ? h('button', { class: 'btn sm outline', onclick: () => { S.pluginTab = agent; openView('plugins'); } }, '管理插件') : null)));
+            ok && agent !== 'gemini' && agent !== 'cursor' ? h('button', { class: 'btn sm outline', onclick: () => { S.pluginTab = agent; openView('plugins'); } }, '管理插件') : null)));
     };
     put(main,
       h('div', { class: 'chat-head' }, h('div', { class: 'title' }, icon('chart', 22), h('span', {}, '訂閱與用量'))),
       h('div', { class: 'page' }, h('div', { class: 'page-inner' },
         h('div', { class: 'muted', style: { fontSize: '14px', lineHeight: 1.5, marginBottom: '16px' } },
-          'CCA 使用官方 Claude Code、Codex 與 Gemini CLI。Gemini 可開私訊、加入一般群組或多代理流程。Google 已於 2026-06-18 停止免費層與 Google One 個人帳號使用 Gemini CLI，需改用仍受支援的付費或工作區帳號；方案與額度依 Google 實際回報，每 60 秒更新。'),
+          'CCA 使用官方 Claude Code、Codex、Gemini CLI 與 Cursor CLI。Gemini 與 Cursor 可開私訊、加入一般群組或多代理流程；Cursor 的模型（包括 Grok）只從 Cursor CLI 回報的清單選擇。Google 已於 2026-06-18 停止免費層與 Google One 個人帳號使用 Gemini CLI，需改用仍受支援的付費或工作區帳號；方案與額度依 Google 實際回報，每 60 秒更新。'),
         usageCard(),
-        h('div', { class: 'acct-grid' }, card('claude'), card('codex'), card('gemini')))));
+        h('div', { class: 'acct-grid' }, card('claude'), card('codex'), card('gemini'), card('cursor')))));
   }
   function stateText(s) {
     return { checking: '檢查中…', ok: '已通過', missing: '找不到 CLI', loggedOut: '尚未登入', wrongMethod: '登入方式不對', noPlan: '方案不符', error: '檢查未完成', serviceError: '已登入，服務檢查未通過', retired: '個人帳號已停用', loggingIn: '等待登入…' }[s] || s || '-';
@@ -3061,7 +3133,7 @@
           h('div', { class: 'codeblock', style: { maxWidth: '100%' } }, h('pre', {}, h('code', {}, a.install)),
             h('button', { class: 'code-copy', style: { opacity: 1 } }, '複製'))));
       }
-      if (st === 'loggedOut' || st === 'wrongMethod' || st === 'error') actions.push(h('button', { class: 'btn sm primary', onclick: () => send({ type: 'auth.login', agent }) }, agent === 'claude' ? '登入 Claude' : agent === 'gemini' ? '登入 Gemini' : '登入 ChatGPT'));
+      if (st === 'loggedOut' || st === 'wrongMethod' || st === 'error') actions.push(h('button', { class: 'btn sm primary', onclick: () => send({ type: 'auth.login', agent }) }, agent === 'claude' ? '登入 Claude' : agent === 'gemini' ? '登入 Gemini' : agent === 'cursor' ? '登入 Cursor' : '登入 ChatGPT'));
       if (st === 'noPlan') actions.push(h('button', { class: 'btn sm success', onclick: () => send({ type: 'open', target: a.upgrade }) }, '查看方案'));
       if (st !== 'checking' && st !== 'ok') actions.push(h('button', { class: 'btn sm secondary', onclick: () => send({ type: 'auth.check', agent }) }, '重新檢查'));
       if (st === 'missing') actions.push(h('button', { class: 'btn sm ghost', onclick: settingsDialog }, '指定執行檔位置'));
@@ -3079,6 +3151,7 @@
       row('claude', 'Claude Pro 以上'),
       row('codex', 'ChatGPT Plus 以上'),
       row('gemini', '受支援的 Google 付費或工作區帳號'),
+      row('cursor', 'Cursor 帳號（Grok 等模型）'),
       h('button', { class: 'btn secondary', onclick: () => { S.apiSetup = true; renderGate(); openSettings('platform'); } }, '改用 API，設定獨立計費的供應商'),
       h('div', { class: 'gate-foot' }, 'CCA 只讀取官方 CLI 回報的登入狀態和方案名稱，不會保存你的密碼和權杖。只有在你開啟「即時查詢 Claude 額度」後，才會讀取 Claude Code 的登入權杖來查詢額度。')));
   }

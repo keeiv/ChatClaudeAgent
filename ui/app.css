@@ -47,6 +47,9 @@
   --gemini: #a68cff;
   --gemini-name: #bba7ff;
   --gemini-rgb: 166, 140, 255;
+  --cursor: #c3ccd6;
+  --cursor-name: #d5dde6;
+  --cursor-rgb: 195, 204, 214;
   --gray-btn: #222d37;
   --gray-btn-hover: #2c3945;
   --cut: 0px;
@@ -143,6 +146,7 @@ a:hover { text-decoration: underline; text-underline-offset: .2em; }
 .wf-node[data-agent="claude"] { --wf-color: var(--claude-name); --wf-rgb: 217,119,87; }
 .wf-node[data-agent="codex"] { left: 71%; --wf-color: var(--codex-name); --wf-rgb: 16,163,127; }
 .wf-node[data-agent="gemini"] { left: 39.5%; --wf-color: var(--gemini-name); --wf-rgb: var(--gemini-rgb); }
+.wf-node[data-agent="cursor"] { top: 100px; left: 71%; height: 52px; --wf-color: var(--cursor-name); --wf-rgb: var(--cursor-rgb); }
 .wf-node[data-agent="local1"] { top: 100px; left: 32.5%; width: 16%; height: 52px; --wf-color: var(--local1-name); --wf-rgb: 235,69,158; }
 .wf-node[data-agent="local2"] { top: 100px; left: 51.5%; width: 16%; height: 52px; --wf-color: var(--local2-name); --wf-rgb: 155,132,236; }
 .wf-node-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -277,6 +281,7 @@ a:hover { text-decoration: underline; text-underline-offset: .2em; }
 .avatar.claude { --agent: var(--claude); }
 .avatar.codex { --agent: var(--codex); }
 .avatar.gemini { --agent: var(--gemini); }
+.avatar.cursor { --agent: var(--cursor); }
 .avatar.local1 { --agent: var(--local1); }
 .avatar.local2 { --agent: var(--local2); }
 .avatar.user { --agent: var(--star); }
@@ -296,6 +301,7 @@ a:hover { text-decoration: underline; text-underline-offset: .2em; }
 .group-dots i.claude { background: var(--claude); }
 .group-dots i.codex { background: var(--codex); }
 .group-dots i.gemini { background: var(--gemini); }
+.group-dots i.cursor { background: var(--cursor); }
 .group-dots i.local { background: var(--local1); }
 .group-dots i.api { background: var(--header-2); }
 
@@ -443,6 +449,7 @@ code.inline { font-family: var(--mono); font-size: 85%; background: var(--bg-cod
 .sys-skip .skip-who.claude { color: var(--claude-name); }
 .sys-skip .skip-who.codex { color: var(--codex-name); }
 .sys-skip .skip-who.gemini { color: var(--gemini-name); }
+.sys-skip .skip-who.cursor { color: var(--cursor-name); }
 
 /* embeds */
 .embed { margin-top: 4px; max-width: 640px; background: var(--bg-embed); border-left: 4px solid var(--gray-btn); border-radius: 4px;
@@ -655,6 +662,8 @@ textarea.input { height: auto; min-height: 72px; padding: 8px 10px; resize: vert
 .popover.wide { max-width: 640px; width: 600px; max-width: calc(100vw - 24px); }
 
 .pop-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.cursor-models { max-height: 340px; overflow-y: auto; margin-top: 6px; }
+.cursor-models-note { padding: 6px 8px 2px; font-size: 12px; color: var(--text-faint); }
 .pop-title { font-size: 12px; font-weight: 700; color: var(--header-2); padding: 6px 8px 4px; }
 .pop-item { width: 100%; text-align: left; padding: 6px 8px; border-radius: 2px; font-size: 14px; color: var(--header-2); display: flex; gap: 8px; align-items: flex-start; }
 .pop-item:hover { background: var(--bg-selected); color: var(--header); }
@@ -1000,6 +1009,7 @@ details.prompt-view pre { white-space: pre-wrap; background: var(--bg-rail); bor
 .update-folder { font-family: var(--mono); font-size: 12px; color: var(--text); overflow-wrap: anywhere; margin: 8px 0; }
 
 .msg-author.gemini { color: var(--gemini-name); }
+.msg-author.cursor { color: var(--cursor-name); }
 .theme-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 22px 0; }
 .theme-option { display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 0;
   padding: 10px; text-align: left; border: 1px solid var(--line); background: var(--bg-panel); color: var(--text); border-radius: 10px; }
@@ -1045,6 +1055,8 @@ details.prompt-view pre { white-space: pre-wrap; background: var(--bg-rail); bor
 .pipeline-quota + .pipeline-quota { margin-top: 10px; }
 .member .mn.gemini, .sys .who.gemini { color: var(--gemini-name); }
 .for-tag.gemini { color: var(--gemini-name); background: rgba(var(--gemini-rgb), .16); }
+.member .mn.cursor, .sys .who.cursor { color: var(--cursor-name); }
+.for-tag.cursor { color: var(--cursor-name); background: rgba(var(--cursor-rgb), .16); }
 
 /* ------------------------------------------------------------ version-control pane */
 /* Tiles read by color before text: yellow changed, green new, red not recommended; a lock marks never-commit rules. */
@@ -1202,6 +1214,7 @@ details.prompt-view pre { white-space: pre-wrap; background: var(--bg-rail); bor
 .msg-header { gap: 6px; line-height: 24px; margin-bottom: 2px; }
 .msg-author { font-weight: 650; font-size: 14px; color: var(--header); }
 .msg-author.gemini { color: var(--gemini-name); }
+.msg-author.cursor { color: var(--cursor-name); }
 .msg-time, .msg-model { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .msg-body, .msg > .activity, .msg > .embed, .msg > .route-note, .msg > .msg-foot { max-width: 880px; }
 .msg[data-author="user"] > .msg-body { width: fit-content; max-width: min(760px, 100%); padding: 9px 14px;
@@ -1316,6 +1329,7 @@ code.inline { border-radius: 4px; font-size: 88%; }
 .member:hover { background: transparent; }
 .member .mn { font-size: 13.5px; font-weight: 600; }
 .member .mn.gemini { color: var(--gemini-name); }
+.member .mn.cursor { color: var(--cursor-name); }
 .member .ms { font-size: 12px; color: var(--text-faint); }
 .member .tag { flex: none; }
 .perm-opt { border-radius: var(--radius); padding: 9px 10px; }

@@ -93,8 +93,9 @@ window.CCAPlatform = (() => {
       bindings = [];
       nodes.forEach((node, index) => {
         const name = input(node.name || node.id); name.onchange = () => { node.name = name.value; };
-        const kind = h('select', { class: 'select' }, ['claude', 'codex', 'gemini', 'api', 'local'].map(value => h('option', { value },
-          { claude: 'Claude Code 訂閱', codex: 'Codex 訂閱', gemini: 'Gemini Google 帳號（免費／付費）', api: 'API（獨立計費）', local: 'Ollama（唯讀）' }[value])));
+        const kind = h('select', { class: 'select' }, ['claude', 'codex', 'gemini', 'cursor', 'api', 'local'].map(value => h('option', { value },
+          { claude: 'Claude Code 訂閱', codex: 'Codex 訂閱', gemini: 'Gemini Google 帳號（免費／付費）', cursor: 'Cursor 帳號（Grok 等模型）',
+            api: 'API（獨立計費）', local: 'Ollama（唯讀）' }[value])));
         kind.value = node.backend; kind.onchange = () => {
           node.backend = kind.value; node.model = ''; delete node.provider; delete node.effort;
           if (kind.value === 'local' && node.role === 'write') node.role = 'review';
@@ -139,6 +140,13 @@ window.CCAPlatform = (() => {
             if (!localRequested) { localRequested = true; send({ type: 'local.status' }); }
           } else if (node.backend === 'gemini') {
             status = '使用官方 CLI 預設模型。可審查並修改檔案；需確認的工具會拒絕執行，無介面模式無法代答權限卡。唯讀規劃模式不啟動 Gemini。';
+          } else if (node.backend === 'cursor') {
+            // Grok first: the list is long, and the model id already carries the reasoning level.
+            const all = (api.getModels().cursor || []).map(m => ({ value: m.value, label: m.displayName || m.value, isDefault: m.isDefault }));
+            models = [...all.filter(m => /grok/i.test(m.value)), ...all.filter(m => !/grok/i.test(m.value))];
+            if (!node.model && models.length) node.model = models[0].value;
+            status = models.length ? '只列出 Cursor CLI 回報的模型；思考程度包含在模型名稱裡。需要「自動編輯」或「跳過所有確認」權限，唯讀規劃與每次詢問不啟動 Cursor。'
+              : '尚未取得 Cursor 的模型清單，請到「訂閱與用量」登入並重新檢查，再更新清單。';
           } else {
             models = (api.getModels()[node.backend] || []).map(m => ({ value: m.value, label: m.displayName || m.value, description: m.description }));
             status = models.length ? '使用已登入的 CLI 模型清單。' : '尚未取得模型清單，可使用 CLI 預設模型，或更新清單。';
@@ -189,6 +197,9 @@ window.CCAPlatform = (() => {
       onClose: () => { if (refreshEditor === refresh) refreshEditor = null; },
       body: [list, button('新增 Gemini 審查者', () => {
         nodes.push({ id: 'gemini-' + Date.now(), name: 'Gemini', backend: 'gemini', role: 'review', model: '' });
+        routing.value = 'full'; draw();
+      }), button('新增 Cursor 審查者', () => {
+        nodes.push({ id: 'cursor-' + Date.now(), name: 'Cursor', backend: 'cursor', role: 'review', model: '' });
         routing.value = 'full'; draw();
       }), button('新增代理', () => { const id = 'agent-' + Date.now(); nodes.push({ id, name: '新代理', backend: 'codex', role: 'review', model: '' }); draw(); }),
         field('完整循環上限', cycles), field('驗收標準', acceptance),

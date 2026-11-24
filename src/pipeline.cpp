@@ -29,6 +29,7 @@ std::string textOf(const Json& message) {
 }
 AgentKind backend(const Json& node) {
     if (node["backend"].str() == "gemini") return AgentKind::Gemini;
+    if (node["backend"].str() == "cursor") return AgentKind::Cursor;
     return node["backend"].str() == "claude" ? AgentKind::Claude : AgentKind::Codex;
 }
 std::shared_ptr<void> lockWorkspace(const std::wstring& cwd) {
@@ -76,7 +77,8 @@ bool validatePipeline(const Json& pipeline, std::string* error) {
             if (!nodeFields.count(f.first)) return fail("代理含有未支援的欄位");
         if (!ident(node["id"].str()) || !ids.insert(node["id"].str()).second) return fail("代理識別碼無效或重複");
         std::string kind = node["backend"].str(), role = node["role"].str();
-        if (kind != "claude" && kind != "codex" && kind != "gemini" && kind != "api" && kind != "local")
+        if (kind != "claude" && kind != "codex" && kind != "gemini" && kind != "cursor" && kind != "api" &&
+            kind != "local")
             return fail("未知的代理後端");
         if (role != "write" && role != "review" && role != "verify") return fail("角色只能是 write、review 或 verify");
         if (kind == "api" && !ident(node["provider"].str())) return fail("API 代理必須選擇供應商");
@@ -300,6 +302,23 @@ bool App::startPipelineAgent(Conversation& c, const std::string& text, std::stri
         c.gemini = session;
         return session->send(resolveGeminiExe(), cfg, text, error);
     }
+    if (kind == "cursor") {
+        // The node names a model from the catalogue Cursor reported for this account; nothing else is accepted.
+        bool listed = false;
+        for (const auto& model : cursorModels_.items()) listed |= model["value"].str() == cfg.model;
+        if (cursorStatus_.state != "ok") {
+            if (error) *error = "請先在訂閱與用量頁登入並檢查 Cursor 帳號";
+            return false;
+        }
+        if (!listed || !cfg.effort.empty()) {
+            if (error) *error = "Cursor 代理必須選擇 Cursor 回報的模型，思考程度已包含在模型裡";
+            return false;
+        }
+        auto& session = c.pipelineCursor[id];
+        if (!session) session = std::make_shared<CursorSession>(events);
+        c.cursor = session;
+        return session->send(resolveCursor(), cfg, text, error);
+    }
     if (kind == "claude") {
         if (c.worker) {
             c.worker->shutdown();
@@ -364,6 +383,9 @@ void App::clearPipelineSessions(Conversation& c) {
     for (auto& session : c.pipelineGemini) session.second->shutdown();
     c.pipelineGemini.clear();
     c.gemini.reset();
+    for (auto& session : c.pipelineCursor) session.second->shutdown();
+    c.pipelineCursor.clear();
+    c.cursor.reset();
     if (c.worker) {
         c.worker->shutdown();
         c.worker.reset();
@@ -599,10 +621,11 @@ void App::pipelineAdvance(Conversation& c) {
 
 bool App::pipelineNodeOut(const Json& node) const {
     const auto kind = node["backend"].str();
-    if (kind != "claude" && kind != "codex" && kind != "gemini")
+    if (kind != "claude" && kind != "codex" && kind != "gemini" && kind != "cursor")
         return false;  // API and local agents have no quota here
     AgentKind k = backend(node);
     if (k == AgentKind::Gemini && (geminiStatus_.state == "retired" || geminiStatus_.state == "missing")) return true;
+    if (k == AgentKind::Cursor && cursorStatus_.state == "missing") return true;
     return agentExhausted(k);
 }
 

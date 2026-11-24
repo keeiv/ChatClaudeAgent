@@ -34,8 +34,12 @@ window.MockBackend = (() => {
       codexModel: '', codexEffort: '', maxRounds: 6, createdAt: now - 3 * 86400000 },
     { id: 'dm-gemini', kind: 'gemini', name: 'Gemini', cwd: 'C:\\Projects\\shop-api', isGit: true, permission: 'edit',
       claudeModel: '', claudeEffort: '', codexModel: '', codexEffort: '', maxRounds: 6, createdAt: now - 3 * 86400000 },
+    { id: 'dm-cursor', kind: 'cursor', name: 'Cursor', cwd: 'C:\\Projects\\shop-api', isGit: true, permission: 'edit',
+      cursorModel: flags.includes('cursor-unpicked') ? '' : 'grok-4.7-high', claudeModel: '', claudeEffort: '', codexModel: '', codexEffort: '',
+      maxRounds: 6, createdAt: now - 3 * 86400000 },
     { id: 'g1', kind: 'group', name: '協作群組', cwd: 'C:\\Projects\\shop-api', isGit: true, permission: 'edit', geminiMember: flags.includes('quota'),
-      exhausted: { claude: flags.includes('quota'), codex: false, gemini: false },
+      exhausted: { claude: flags.includes('quota'), codex: false, gemini: false, cursor: false }, cursorMember: flags.includes('cursor'),
+      cursorModel: 'grok-4.7-high',
       claudeModel: '', claudeEffort: '', codexModel: '', codexEffort: 'high', maxRounds: 6, localMembers: ['local1', 'local2'], createdAt: now - 2 * 86400000 },
   ];
   const states = {};
@@ -53,6 +57,14 @@ window.MockBackend = (() => {
       { value: 'gpt-6.1-sol', displayName: 'GPT-6.1-Sol', description: 'Latest workhorse model for coding and everyday work.', isDefault: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] },
       { value: 'gpt-6-astra', displayName: 'GPT-6-Astra', description: 'Deepest reasoning for hard problems.', supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'] },
       { value: 'gpt-6-luna', displayName: 'GPT-6-Luna', description: 'Fast and efficient.', supportedEffortLevels: ['low', 'medium', 'high'] },
+    ],
+    // Shaped like the host's parse of `agent models`: ids as listed, effort folded into the id.
+    cursor: [
+      { value: 'auto', displayName: 'Auto', isDefault: true, supportedEffortLevels: [] },
+      { value: 'composer-2', displayName: 'Composer 2', supportedEffortLevels: [] },
+      { value: 'grok-4.7-high', displayName: 'Grok 4.7 High', supportedEffortLevels: [] },
+      { value: 'grok-4.7-xhigh-fast', displayName: 'Grok 4.7 Extra High Fast', supportedEffortLevels: [] },
+      { value: 'cursor-grok-4.6-medium', displayName: 'Grok 4.6 Medium', supportedEffortLevels: [] },
     ],
   };
   const daily = {};
@@ -102,6 +114,7 @@ window.MockBackend = (() => {
     ],
     'dm-codex': [],
     'dm-gemini': [],
+    'dm-cursor': [],
     g1: [
       { id: id(), author: 'user', ts: now - 40 * min, text: '幫購物車加上折扣碼功能（百分比和固定金額兩種），要有單元測試' },
       { id: id(), author: 'claude', ts: now - 40 * min, phase: 'write', round: 0, model: '', streaming: false, status: 'completed', snapshot: 'abc1234',
@@ -178,6 +191,8 @@ window.MockBackend = (() => {
     gemini: { state: 'ok', plan: 'Google AI Pro', planLabel: 'Google AI Pro', email: 'gemini@example.com', exe: 'C:\\Users\\you\\AppData\\Roaming\\npm\\gemini.cmd' },
     claude: { state: 'ok', plan: 'max', planLabel: 'Claude Max', email: 'you@example.com', version: '2.1.299', exe: 'C:\\Users\\you\\.local\\bin\\claude.exe' },
     codex: { state: 'ok', plan: 'plus', planLabel: 'ChatGPT Plus', email: 'you@example.com', version: '0.162.1', exe: 'C:\\Users\\you\\AppData\\Roaming\\npm\\codex.exe' },
+    cursor: { state: 'ok', plan: 'Pro', planLabel: 'Cursor Pro', email: 'you@example.com', version: '2026.11.19-f005e9d',
+      exe: 'C:\\Users\\you\\AppData\\Local\\cursor-agent\\versions\\2026.11.19-f005e9d\\index.js' },
   };
   const authGate = {
     type: 'auth', ok: false,
@@ -241,7 +256,7 @@ window.MockBackend = (() => {
       const nodes = c.pipeline.nodes.map((n, index) => {
         const agent = n.backend, current = st.task?.cursor === index;
         const status = current && st.typing.includes(agent) ? st.thinking[agent] ? 'thinking' : 'writing' : 'waiting';
-        return { id: 'pipeline:' + n.id, agent, name: n.name, profile: ({ claude: 'Claude', codex: 'GPT', gemini: 'Gemini' })[agent],
+        return { id: 'pipeline:' + n.id, agent, name: n.name, profile: ({ claude: 'Claude', codex: 'GPT', gemini: 'Gemini', cursor: 'Cursor' })[agent],
           role: ({ write: '撰寫', review: '審查', verify: '驗證' })[n.role] || n.role,
           model: n.model, status, label: ({ thinking: '思考中', writing: '處理中', waiting: '待命' })[status] };
       });
@@ -756,7 +771,7 @@ window.MockBackend = (() => {
         msgOut(c.id, u);
         agentTurn(c.id, c.kind, {}, [
           { tool: { kind: 'search', title: '搜尋內容', detail: m.text.slice(0, 20) } },
-          { text: `收到。這是模擬回覆，真正的 ${{ claude: 'Claude', gemini: 'Gemini' }[c.kind] || 'GPT'} 會在 CCA.exe 裡回答。\n\n- 第一點\n- 第二點` },
+          { text: `收到。這是模擬回覆，真正的 ${{ claude: 'Claude', gemini: 'Gemini', cursor: 'Cursor' }[c.kind] || 'GPT'} 會在 CCA.exe 裡回答。\n\n- 第一點\n- 第二點` },
         ]);
         break;
       }

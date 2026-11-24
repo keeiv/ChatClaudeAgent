@@ -16,7 +16,10 @@ const size_t kMaxPromptDiff = 40 * 1024;
 AgentKind other(AgentKind k) { return k == AgentKind::Claude ? AgentKind::Codex : AgentKind::Claude; }
 
 AgentKind kindOf(const std::string& name) {
-    return name == "codex" ? AgentKind::Codex : name == "gemini" ? AgentKind::Gemini : AgentKind::Claude;
+    return name == "codex"    ? AgentKind::Codex
+           : name == "gemini" ? AgentKind::Gemini
+           : name == "cursor" ? AgentKind::Cursor
+                              : AgentKind::Claude;
 }
 
 const char* phaseLabel(const std::string& phase) {
@@ -39,6 +42,7 @@ std::vector<AgentKind> App::groupMembers(const Conversation& c) const {
     AgentKind lead = c.lead == "codex" ? AgentKind::Codex : AgentKind::Claude;
     std::vector<AgentKind> members{lead, other(lead)};
     if (c.geminiMember) members.push_back(AgentKind::Gemini);
+    if (c.cursorMember) members.push_back(AgentKind::Cursor);
     return members;
 }
 
@@ -46,6 +50,10 @@ bool App::groupCanRun(const Conversation& c, AgentKind k) const {
     if (c.group.skipped.count(agentName(k)) || agentExhausted(k)) return false;
     // A Google account the CLI no longer serves cannot take a turn at all; treat it like an empty quota.
     if (k == AgentKind::Gemini) return geminiStatus_.state != "retired" && geminiStatus_.state != "missing";
+    // Cursor needs a checked login, a model picked from its catalogue and a permission its headless mode honours.
+    if (k == AgentKind::Cursor)
+        return cursorStatus_.state == "ok" && !c.cursorModel.empty() &&
+               CursorSession::permissionProblem(c.permission, c.cwd).empty();
     // Claude without a usable subscription is passed over as before; an unavailable GPT still pauses for a retry.
     if (k == AgentKind::Claude) return claudeStatus_.state == "ok";
     return true;
@@ -54,6 +62,7 @@ bool App::groupCanRun(const Conversation& c, AgentKind k) const {
 namespace {
 std::string unavailableReason(bool exhausted, AgentKind k) {
     if (exhausted) return "額度不足";
+    if (k == AgentKind::Cursor) return "沒有通過帳號檢查、還沒選模型，或群組權限不是「自動編輯」或「跳過所有確認」";
     return k == AgentKind::Gemini ? "的帳號目前無法使用 Gemini CLI" : "尚未通過訂閱檢查";
 }
 }  // namespace
@@ -67,14 +76,17 @@ std::string App::groupInstructions(const Conversation& c, AgentKind k) const {
                "不得宣稱其他成員已審查；本地模型的建議須自行查證。請簡潔回報完成與尚未完成項目。";
     }
     AgentKind lead = c.lead == "codex" ? AgentKind::Codex : AgentKind::Claude;
-    if (k == AgentKind::Gemini)
-        role +=
-            nameOf(lead) + " 是主要撰寫者，" + nameOf(other(lead)) +
-            " 先審查，你是第三位審查者。查證前兩位沒有發現的錯誤、遺漏與安全問題，必要時直接修改，再交給下一位複審。";
-    else if (k == lead)
+    if (isHeadlessCli(k)) {
+        const bool fourth = k == AgentKind::Cursor && c.geminiMember;
+        role += nameOf(lead) + " 是主要撰寫者，" + nameOf(other(lead)) +
+                (fourth ? "、" + nameOf(AgentKind::Gemini) : "") + " 先審查，你是第" + (fourth ? "四" : "三") +
+                "位審查者。查證前面成員沒有發現的錯誤、遺漏與安全問題，必要時直接修改，再交給下一位複審。";
+    } else if (k == lead)
         role += "你是主要撰寫者，負責實作使用者需求；完成後由 " + partner + " 審查並修改，再交給你複審。";
     else role += partner + " 是主要撰寫者，你是審查者。查證錯誤、遺漏與安全問題，必要時直接修改，再交給對方複審。";
     if (c.geminiMember && k != AgentKind::Gemini) role += nameOf(AgentKind::Gemini) + " 也在群組裡，擔任第三位審查者。";
+    if (c.cursorMember && k != AgentKind::Cursor)
+        role += nameOf(AgentKind::Cursor) + " 也在群組裡，擔任第" + (c.geminiMember ? "四" : "三") + "位審查者。";
     return role +
            "請遵守使用者對唯讀、禁止修改等限制。沒有實質問題不要為改而改。"
            "依照交接訊息規則在最後一行寫 VERDICT。請用台灣繁體中文，說明簡潔。";
@@ -128,7 +140,7 @@ std::string App::reviewPrompt(const Conversation& c, AgentKind from, AgentKind t
     p += "回覆的最後一行必須是以下三者之一：\n";
     p += "VERDICT: APPROVE（你完全同意目前的程式碼，而且這一輪沒有修改任何檔案）\n";
     p += "VERDICT: CHANGED（你修改了檔案，請簡短說明改了什麼、為什麼）\n";
-    p += "VERDICT: ISSUES（你有疑慮但沒有修改，請說明需要 " + (c.geminiMember ? "其他成員" : nameOf(other(to))) +
+    p += "VERDICT: ISSUES（你有疑慮但沒有修改，請說明需要 " + (c.extraReviewers() ? "其他成員" : nameOf(other(to))) +
          " 處理什麼）";
     return p + reviewFocus(c, to);
 }
@@ -161,7 +173,7 @@ void App::groupStart(Conversation& c, const std::string& text) {
     c.lastRequest = text;
     c.task = newTask(c.id, text, util::nowMs());
     saveTask(c.task);
-    c.group.solo = c.lead == "codex" && (claudeLimited() || claudeStatus_.state != "ok") && !c.geminiMember;
+    c.group.solo = c.lead == "codex" && (claudeLimited() || claudeStatus_.state != "ok") && !c.extraReviewers();
     groupHandOff(c, c.lead == "codex" ? AgentKind::Codex : AgentKind::Claude, text, "write");
 }
 
@@ -254,7 +266,7 @@ void App::groupHandOff(Conversation& c, AgentKind next, const std::string& promp
     g.pauseReason.clear();
     g.pauseKind.clear();
     // Known exhaustion is skipped before spending a turn; a failed login still pauses for the user below.
-    if (c.autoFallback && (agentExhausted(next) || (next == AgentKind::Gemini && !groupCanRun(c, next)))) {
+    if (c.autoFallback && (agentExhausted(next) || (isHeadlessCli(next) && !groupCanRun(c, next)))) {
         groupSkip(c, next, unavailableReason(agentExhausted(next), next));
         return;
     }
@@ -274,7 +286,7 @@ void App::groupTurnDone(Conversation& c, AgentKind k, const Json& msg, const std
         groupFinish(c, "stopped", "已停止協作。");
         return;
     }
-    if (k == AgentKind::Claude && c.autoFallback && claudeLimited() && !c.geminiMember) {
+    if (k == AgentKind::Claude && c.autoFallback && claudeLimited() && !c.extraReviewers()) {
         std::string err;
         if (!takeOver(c, "Claude 額度已耗盡", &err)) groupPause(c, err, AgentKind::Codex, g.lastPrompt, "write", g.round);
         return;
@@ -556,7 +568,8 @@ void App::taskResume(Conversation& c) {
     std::string next = c.task["handoffs"].size() ? c.task["handoffs"].items().back()["next_action"].str() : "";
     std::string who = next.substr(0, next.find(':'));
     std::string phase = next.find(':') == std::string::npos ? "" : next.substr(next.find(':') + 1);
-    if (who != "claude" && who != "codex" && (who != "gemini" || !c.geminiMember)) {
+    if (who != "claude" && who != "codex" && (who != "gemini" || !c.geminiMember) &&
+        (who != "cursor" || !c.cursorMember)) {
         who = c.lead == "codex" ? "codex" : "claude";
         phase = c.task["handoffs"].size() ? "recheck" : "write";
     }
@@ -600,8 +613,14 @@ void App::groupStop(Conversation& c) {
         onAgentEvent(c.id, AgentKind::Gemini, {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
         return;
     }
+    if (c.cursor && c.cursor->busy()) {
+        c.cursor->shutdown();
+        onAgentEvent(c.id, AgentKind::Cursor, {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
+        return;
+    }
     if (c.worker) c.worker->shutdown();
     if (c.gemini) c.gemini->shutdown();
+    if (c.cursor) c.cursor->shutdown();
     c.stateDirty = true;
     bool busy = (c.claude && c.claude->busy()) || (c.codex && c.codex->busy()) || (c.local[0] && c.local[0]->busy()) ||
                 (c.local[1] && c.local[1]->busy());

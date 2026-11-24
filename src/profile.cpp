@@ -129,6 +129,8 @@ std::string App::nameOf(AgentKind k) const {
         return "GPT";
     case AgentKind::Gemini:
         return "Gemini";
+    case AgentKind::Cursor:
+        return "Cursor";
     case AgentKind::Local1:
         return "本地模型 1";
     default:
@@ -194,6 +196,7 @@ void App::ensureProfileDefaults() {
     if (!resume["delayMinutes"].isNumber()) resume["delayMinutes"] = 3;
     if (!resume["maxAttempts"].isNumber()) resume["maxAttempts"] = 3;
     if (!resume["fallback"].isObject()) resume["fallback"] = J({{"claude", 300}, {"codex", 300}, {"gemini", 60}});
+    if (!resume["fallback"]["cursor"].isNumber()) resume["fallback"]["cursor"] = 60;
     if (!resume["window"].isObject()) resume["window"] = J({{"enabled", false}, {"from", "00:00"}, {"to", "08:00"}});
     if (!settings_["reviewProfiles"].isArray()) settings_["reviewProfiles"] = defaultReviewProfiles();
     if (!settings_["daily"].isObject()) settings_["daily"] = Json::object();

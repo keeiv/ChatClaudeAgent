@@ -174,7 +174,91 @@ static int fakeGemini() {
     return 0;
 }
 
+// Cursor Agent CLI stream-json; the tested program runs as node.exe with a fixture index.js in argv[1].
+static int fakeCursor() {
+    std::string all, line;
+    while (std::getline(std::cin, line)) all += line + "\n";
+    out(J({{"type", "system"},
+           {"subtype", "init"},
+           {"apiKeySource", "login"},
+           {"session_id", "fake-cursor"},
+           {"model", "Grok Fixture"}}));
+    std::string answer =
+        all.find("位審查者") != std::string::npos ? "CURSOR_REVIEW_OK\n\nVERDICT: APPROVE" : "CURSOR_DM_OK";
+    out(J({{"type", "assistant"},
+           {"message",
+            J({{"role", "assistant"}, {"content", Json(Json::Array{J({{"type", "text"}, {"text", answer}})})}})}}));
+    out(J({{"type", "result"},
+           {"subtype", "success"},
+           {"is_error", false},
+           {"result", answer},
+           {"session_id", "fake-cursor"}}));
+    return 0;
+}
+
 struct TakeoverTestAccess {
+    // Cursor in an ordinary group: it reviews after GPT when allowed, and is shown as skipped when the group's
+    // permission is one its headless mode cannot honour.
+    static void cursorMember(const std::wstring& root, const std::wstring& exe) {
+        std::string path = util::narrow(util::getEnv(L"PATH"));
+        for (const bool ask : {false, true}) {
+            std::wstring data = util::joinPath(root, ask ? L"cursor-ask" : L"cursor-group");
+            util::ensureDir(data);
+            SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+            SetEnvironmentVariableW(L"CCA_TEST_FAILURE", L"");
+            SetEnvironmentVariableW(L"CCA_TEST_WRITE", L"0");
+            SetEnvironmentVariableW(L"CURSOR_CONFIG_DIR", util::joinPath(data, L"cursor-config").c_str());
+            SetEnvironmentVariableW(L"PATH", L"");
+            App app([](const std::string&) {});
+            SetEnvironmentVariableW(L"PATH", util::widen(path).c_str());
+            app.claudeStatus_.state = app.codexStatus_.state = app.cursorStatus_.state = "ok";
+            app.claudeStatus_.exe = app.codexStatus_.exe = exe;
+            app.settings_["claudePath"] = util::narrow(exe);
+            app.settings_["codexPath"] = util::narrow(exe);
+            app.settings_["guard"]["enabled"] = false;
+            app.cursorLaunchOverride_ = {exe, util::joinPath(root, L"fixture-cursor\\index.js"), L"fixture"};
+            app.cursorModels_ = Json::array();
+            app.cursorModels_.push(J({{"value", "grok-fixture"}, {"displayName", "Grok Fixture"}}));
+            Conversation* c = nullptr;
+            for (auto& p : app.convs_)
+                if (p->kind == "group") c = p.get();
+            c->cwd = root;
+            c->permission = ask ? "ask" : "edit";
+            app.onUiMessage(J({{"type", "conv.settings"},
+                               {"id", c->id},
+                               {"settings", J({{"cursorMember", true}, {"cursorModel", "grok-fixture"}})}})
+                                .dump());
+            check(c->cursorMember && c->cursorModel == "grok-fixture" && app.groupMembers(*c).size() == 3,
+                  "Cursor joins the ordinary group rotation with a reported model");
+            app.onUiMessage(J({{"type", "conv.send"},
+                               {"id", c->id},
+                               {"text", "ORIGINAL_TASK: finish both steps; preserve existing work"}})
+                                .dump());
+            for (int i = 0; i < 1500; ++i) {
+                pump();
+                if (!app.anyBusy(*c) && (!c->group.active || c->group.paused)) break;
+                Sleep(10);
+            }
+            bool reviewed = false, consensus = false, skipped = false;
+            for (const auto& m : c->messages) {
+                for (const auto& b : m["blocks"].items())
+                    reviewed |=
+                        m["author"].str() == "cursor" && b["text"].str().find("CURSOR_REVIEW_OK") != std::string::npos;
+                consensus |= m["kind"].str() == "summary" && m["outcome"].str() == "consensus";
+                skipped |= m["kind"].str() == "skip" && m["agent"].str() == "cursor";
+            }
+            if (ask)
+                check(skipped && !reviewed && !c->group.active,
+                      "under ask permission Cursor is shown as skipped and never started");
+            else
+                check(reviewed && consensus && !skipped && !c->group.active,
+                      "Cursor reviews after GPT and the group reaches consensus");
+            app.shutdown();
+            pump();
+        }
+        SetEnvironmentVariableW(L"CURSOR_CONFIG_DIR", nullptr);
+    }
+
     // Gemini as a normal member: a DM, a three-member group, and every member running out of quota.
     static void geminiMember(const std::wstring& root, const std::wstring& exe) {
         auto fixture = [&](const wchar_t* label) {
@@ -301,6 +385,7 @@ struct TakeoverTestAccess {
 
     static void run(const std::wstring& root, const std::wstring& exe) {
         geminiMember(root, exe);
+        cursorMember(root, exe);
         {
             SetEnvironmentVariableW(L"CCA_DATA_DIR", util::joinPath(root, L"opinion-protocol").c_str());
             SetEnvironmentVariableW(L"CCA_TEST_OPINION", L"1");
@@ -800,6 +885,7 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::string(argv[1]) == "app-server") return fakeCodex();
     if (argc > 1 && std::string(argv[1]) == "-p") return fakeClaude(argc, argv);
     if (argc > 1 && std::string(argv[1]) == "--output-format") return fakeGemini();
+    if (argc > 1 && util::endsWith(std::string(argv[1]), "index.js")) return fakeCursor();
     wchar_t tmp[MAX_PATH]; GetTempPathW(MAX_PATH, tmp);
     std::wstring root = util::joinPath(tmp, util::widen("cca-takeover-" + util::newId()));
     util::ensureDir(root);

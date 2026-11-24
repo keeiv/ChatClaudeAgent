@@ -87,6 +87,7 @@ CCA 起於作者使用 OpenAI 為 Claude Code 開發的 Codex 插件時，對雙
 |---|---|---|
 | Claude Code | PowerShell：`irm https://claude.ai/install.ps1 \| iex` | `claude auth login`（或在 CCA 裡按「登入 Claude」） |
 | Codex CLI | 先裝 Node.js，再 `npm install -g @openai/codex` | `codex login`（或在 CCA 裡按「登入 ChatGPT」） |
+| Cursor CLI（選用，Grok 等模型） | PowerShell：`irm 'https://cursor.com/install?win32=true' \| iex` | 在 CCA 的「訂閱與用量」按「登入」 |
 
 桌面版使用 Microsoft Edge WebView2 顯示介面。CLI 不需要 WebView2，建議在 Windows Terminal 執行；字體沿用終端機設定，中文使用終端機的字體回退。
 
