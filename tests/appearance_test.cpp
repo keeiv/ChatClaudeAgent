@@ -149,7 +149,8 @@ struct AppearanceTestAccess {
         auto run = [&](const std::string& request, const std::string& expected) {
             size_t before = c->messages.size();
             app.onUiMessage(J({{"type", "conv.send"}, {"id", c->id}, {"text", request}}).dump());
-            const auto deadline = GetTickCount64() + 12000;
+            // The loop ends as soon as the reply lands; the long bound only covers slow AddressSanitizer builds on CI.
+            const auto deadline = GetTickCount64() + 60000;
             while (GetTickCount64() < deadline) {
                 pump();
                 app.tick();

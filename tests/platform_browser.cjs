@@ -73,7 +73,10 @@ const { chromium } = require('playwright');
       window.__host({ type: 'msg', convId: 'g1', msg: { id: 'visual-evidence', author: 'system', kind: 'artifact', ts: Date.now(), text: '測試圖片', blocks: [{ type: 'image', artifact: image }] } });
     }, { nodes, image });
     await page.getByRole('button', { name: '放大測試圖片', exact: true }).first().waitFor();
+    // The panel redraws on the next animation frame after convState; wait for it instead of sampling once.
+    await page.getByText('API 作者 → API 審查甲 → API 審查乙', { exact: true }).waitFor({ timeout: 10000 });
     check(await page.getByText('API 作者 → API 審查甲 → API 審查乙', { exact: true }).isVisible(), 'dynamic order is visible in task panel');
+    await page.getByText('NEEDS_FIX', { exact: true }).waitFor({ timeout: 10000 });
     check(await page.getByText('NEEDS_FIX', { exact: true }).isVisible(), 'review gate is visible');
     await page.getByRole('button', { name: '放大測試圖片', exact: true }).first().click();
     await page.waitForFunction(() => document.querySelector('.task-picture-full')?.naturalWidth > 0);

@@ -109,7 +109,11 @@ jobs:
           if (Test-Path docs\changelog.md) {
             $paragraphs = (Get-Content docs\changelog.md -Raw -Encoding utf8) -split "\r?\n\r?\n"
             $latest = ($paragraphs | Where-Object { $_.Trim() -and -not $_.StartsWith('#') } | Select-Object -First 1)
+            # Links in the changelog are relative to docs/; on the release page they must point at this commit.
+            $base = "https://github.com/$env:GITHUB_REPOSITORY/blob/$env:GITHUB_SHA/docs/"
+            $latest = [regex]::Replace($latest, '\]\((?!https?:|#)([^)]+)\)', { param($m) '](' + $base + $m.Groups[1].Value + ')' })
           }
+          $verify = "每個檔案都附有建置來源證明，可用 ``gh attestation verify <檔案> -R $env:GITHUB_REPOSITORY`` 核對。"
           $notes = @(
             "普通版本 $env:VERSION，由這個倉庫的提交 $env:GITHUB_SHA 在 GitHub Actions 建置，單元測試通過後發行。",
             '',
@@ -119,7 +123,7 @@ jobs:
             "- ``ChatClaudeAgent-CLI-$env:VERSION.exe``：終端機版",
             "- ``ChatClaudeAgent-$env:VERSION-installers.zip``：解壓縮到 ``%APPDATA%\CCA\installers``，CCA 會在軟體更新頁列出並核對後安裝",
             '',
-            '每個檔案都附有建置來源證明，可用 ``gh attestation verify <檔案> -R ' + $env:GITHUB_REPOSITORY + '`` 核對。',
+            $verify,
             '',
             'SHA-256',
             '```',
