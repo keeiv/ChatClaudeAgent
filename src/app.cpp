@@ -314,8 +314,10 @@ void App::send(const Json& msg) {
 std::string App::taskLimitProblem(Conversation& c) {
     if (!c.task.isObject() || (c.limitTokens <= 0 && c.limitMinutes <= 0)) return "";
     // After a pause the user's "continue" grants another budget of the same size (groupContinue records it).
-    const long long used = c.task["usage_tokens"].i64() - c.task["limit_ack_tokens"].i64();
-    const long long since = c.task["limit_ack_at"].i64(c.task["created"].i64(util::nowMs()));
+    // Read through a const view: a non-const operator[] inserts missing keys and can move the fields being read.
+    const Json& task = c.task;
+    const long long used = task["usage_tokens"].i64() - task["limit_ack_tokens"].i64();
+    const long long since = task["limit_ack_at"].i64(task["created"].i64(util::nowMs()));
     const long long minutes = (util::nowMs() - since) / 60000;
     std::string why;
     if (c.limitTokens > 0 && used >= c.limitTokens)
@@ -1438,11 +1440,13 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
             groupTurnDone(c, k, copy, status);
         }
         if (c.kind != "group") {
+            // Looked up again by id: earlier steps can add messages, which moves the one `msg` referred to.
+            const Json* done = findMsg(c, msgId);
+            const long long took = done ? (*done)["endedAt"].i64() - (*done)["ts"].i64() : 0;
+            const std::string preview = done ? util::truncateUtf8(messageText(*done), 200) : "";
             finishPlan(c, status);
             // A direct message only notifies after a wait worth stepping away for.
-            const long long took = msg["endedAt"].i64() - msg["ts"].i64();
-            if (status == "completed" && took >= 20000)
-                notify(c, nameOf(k) + " 回覆了", util::truncateUtf8(messageText(msg), 200));
+            if (status == "completed" && took >= 20000) notify(c, nameOf(k) + " 回覆了", preview);
         }
         return;
     }
