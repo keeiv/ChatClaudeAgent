@@ -81,22 +81,23 @@ CursorLaunch newestVersion(const std::wstring& install) {
 }
 
 // The display names carry zero-width characters and doubled spaces; ids are kept byte for byte.
+// Zero-width space, joiners, word joiner and BOM: three UTF-8 bytes each, dropped from display names.
+bool invisibleAt(const std::string& in, size_t i) {
+    if (i + 2 >= in.size()) return false;
+    const unsigned char a = (unsigned char)in[i], b = (unsigned char)in[i + 1], d = (unsigned char)in[i + 2];
+    return (a == 0xE2 && b == 0x80 && d >= 0x8B && d <= 0x8F) || (a == 0xE2 && b == 0x81 && d == 0xA0) ||
+           (a == 0xEF && b == 0xBB && d == 0xBF);
+}
+
 std::string cleanName(const std::string& in) {
     std::string out;
-    for (size_t i = 0; i < in.size(); ++i) {
-        unsigned char c = (unsigned char)in[i];
-        if (c == 0xE2 && i + 2 < in.size()) {
-            unsigned char b = (unsigned char)in[i + 1], d = (unsigned char)in[i + 2];
-            if ((b == 0x80 && (d == 0x8B || d == 0x8C || d == 0x8D || d == 0x8E || d == 0x8F)) ||
-                (b == 0x81 && d == 0xA0)) {
-                i += 2;
-                continue;
-            }
-        }
-        if (c == 0xEF && i + 2 < in.size() && (unsigned char)in[i + 1] == 0xBB && (unsigned char)in[i + 2] == 0xBF) {
-            i += 2;
+    size_t i = 0;
+    while (i < in.size()) {
+        if (invisibleAt(in, i)) {
+            i += 3;
             continue;
         }
+        unsigned char c = (unsigned char)in[i++];
         if (c < 0x20 || c == 0x7F) c = ' ';
         if (c == ' ' && (out.empty() || out.back() == ' ')) continue;
         out += (char)c;
