@@ -398,6 +398,10 @@ bool App::handleGit(const Json& m) {
         }).detach();
         return true;
     }
+    if (type == "git.branch" || type == "git.pr" || type == "git.checks") {
+        shipTask(*c, m);
+        return true;
+    }
     if (type != "git.commit" && type != "git.push" && type != "git.pull" && type != "git.fetch") return true;
     if (gitBusy_.count(id)) {
         toast("info", "上一個 Git 動作還在進行");
@@ -606,4 +610,150 @@ void App::tickGit(long long now) {
             });
         }).detach();
     }
+}
+
+Json gitWorkingChanges(const std::wstring& cwd) {
+    GitRun git{cwd};
+    std::string out, err;
+    if (git({L"rev-parse", L"--show-toplevel"}, &out, &err)) return J({{"ok", false}});
+    // Only the project folder's own subtree: a project kept inside another repository (even in its ignored build
+    // folder) must not be held up by that repository's unrelated changes.
+    if (git({L"status", L"--porcelain=v1", L"-z", L"--untracked-files=all", L"--", L"."}, &out, &err))
+        return J({{"ok", false}});
+    // Kept in a local: iterating items() of a temporary would read an array that is already destroyed.
+    const Json parsed = gitflow::parseStatus(out);
+    Json files = Json::array();
+    for (const auto& f : parsed.items()) files.push(f["path"]);
+    return J({{"ok", true}, {"files", files}});
+}
+
+namespace {
+
+// GitHub CLI for pull requests and their checks; never interactive, and nothing is sent unless the user asked.
+int runGh(const std::wstring& cwd, const std::vector<std::wstring>& args, std::string* out, std::string* err) {
+    ProcessOptions opt;
+    opt.exe = util::findOnPath(L"gh");
+    if (opt.exe.empty()) {
+        *err = "需要 GitHub CLI（gh）並已用 gh auth login 登入";
+        return -1;
+    }
+    opt.args = args;
+    opt.cwd = cwd;
+    opt.setEnv = {{L"GH_PROMPT_DISABLED", L"1"}, {L"GIT_TERMINAL_PROMPT", L"0"}, {L"NO_COLOR", L"1"}};
+    out->clear();
+    err->clear();
+    return runWait(opt, out, err, 60000);
+}
+
+// The PR description comes from the host's task record: the request, each handoff and the commands it ran.
+std::string prBody(const Json& task) {
+    std::string body = "## 需求\n\n" + util::truncateUtf8(task["request"].str(), 3000) + "\n\n## 交接紀錄\n\n";
+    for (const auto& h : task["handoffs"].items()) {
+        body += "- " + h["agent_id"].str() + "（" + h["role"].str() + "）：" + h["verdict"].str() + "，修改 " +
+                std::to_string(h["changed_files"].size()) + " 個檔案\n";
+        for (const auto& t : h["test_results"].items())
+            if (t["test"].boolean())
+                body += "  - `" + util::truncateUtf8(t["command"].str(), 200) + "`" +
+                        (t.has("exit_code") ? "，結束碼 " + std::to_string(t["exit_code"].i64()) : "，沒有結束碼") +
+                        "\n";
+    }
+    return body + "\n由 ChatClaudeAgent 的群組任務 " + task["task_id"].str() + " 產生。\n";
+}
+
+}  // namespace
+
+void App::shipTask(Conversation& c, const Json& m) {
+    const std::string type = m["type"].str(), id = c.id;
+    if (gitBusy_.count(id)) {
+        toast("info", "上一個 Git 動作還在進行");
+        return;
+    }
+    if (type != "git.checks" && (anyBusy(c) || c.group.active)) {
+        toast("error", "AI 正在工作，請等它完成或先停止");
+        return;
+    }
+    if (!c.task.isObject() || c.task["task_id"].str().empty()) {
+        toast("error", "這個群組還沒有任務");
+        return;
+    }
+    const Json& record = c.task;  // read-only: a non-const operator[] would add empty fields to the task
+    std::string branch = m["name"].str(record["branch"].str());
+    if (type == "git.branch") {
+        if (!util::startsWith(branch, "cca/")) branch = "cca/" + branch;
+        bool ok = branch.size() <= 80;
+        for (unsigned char ch : branch) ok &= isalnum(ch) || ch == '-' || ch == '_' || ch == '/' || ch == '.';
+        if (!ok || branch.find("..") != std::string::npos || util::endsWith(branch, "/") ||
+            util::endsWith(branch, ".")) {
+            toast("error", "分支名稱只能用英文字母、數字、- _ . /，最多 80 字");
+            return;
+        }
+    }
+    const std::string url = record["pr"]["url"].str();
+    if (type == "git.checks" && url.empty()) {
+        toast("error", "這個任務還沒有 PR");
+        return;
+    }
+    const std::string title = util::truncateUtf8(util::trim(util::splitLines(record["request"].str() + "\n")[0]), 120);
+    const std::string body = prBody(record);
+    gitBusy_.insert(id);
+    send(J({{"type", "git.busy"}, {"id", id}, {"op", type.substr(4)}}));
+    std::weak_ptr<int> life = lifetime_;
+    std::thread([this, life, id, cwd = c.cwd, type, branch, url, title, body, taskId = c.task["task_id"].str()] {
+        GitRun git{cwd};
+        std::string out, err;
+        Json result = J({{"op", type.substr(4)}, {"ok", false}});
+        if (type == "git.branch") {
+            // Uncommitted work moves along to the new branch; nothing is committed here.
+            const int code = git({L"switch", L"-c", util::widen(branch)}, &out, &err);
+            result["ok"] = code == 0;
+            result["branch"] = branch;
+            if (code) result["error"] = "無法建立分支：" + redactText(firstLine(err));
+        } else if (type == "git.pr") {
+            std::wstring bodyFile = util::joinPath(util::appDataDir(), util::widen("pr-body-" + taskId + ".md"));
+            util::writeFileAtomic(bodyFile, body);
+            std::string head;
+            git({L"symbolic-ref", L"--short", L"HEAD"}, &head, &err);
+            const int code =
+                runGh(cwd,
+                      {L"pr", L"create", L"--head", util::widen(util::trim(head)), L"--title",
+                       util::widen(title.empty() ? "CCA task " + taskId : title), L"--body-file", bodyFile},
+                      &out, &err);
+            DeleteFileW(bodyFile.c_str());
+            result["ok"] = code == 0;
+            for (const auto& line : util::splitLines(out))
+                if (util::startsWith(util::trim(line), "https://")) result["url"] = util::trim(line);
+            if (code) result["error"] = "無法建立 PR：" + redactText(firstLine(err.empty() ? out : err));
+        } else {
+            const int code =
+                runGh(cwd, {L"pr", L"checks", util::widen(url), L"--json", L"name,state,bucket,link"}, &out, &err);
+            Json checks = Json::parse(out);
+            // gh exits 8 while checks are still pending; the JSON is still the answer.
+            result["ok"] = checks.isArray();
+            result["checks"] = checks.isArray() ? checks : Json::array();
+            if (!checks.isArray())
+                result["error"] = "無法讀取 CI 狀態：" + redactText(firstLine(err.empty() ? out : err));
+            (void)code;
+        }
+        postToUi([this, life, id, type, result] {
+            if (life.expired()) return;
+            gitBusy_.erase(id);
+            Conversation* c = find(id);
+            if (!c) return;
+            if (result["ok"].boolean() && c->task.isObject()) {
+                if (type == "git.branch") c->task["branch"] = result["branch"];
+                if (type == "git.pr") c->task["pr"] = J({{"url", result["url"]}, {"checks", Json::array()}});
+                if (type == "git.checks") {
+                    c->task["pr"]["checks"] = result["checks"];
+                    c->task["pr"]["checkedAt"] = util::nowMs();
+                }
+                saveTask(c->task);
+                c->stateDirty = true;
+            }
+            send(J({{"type", "git.result"}, {"id", id}, {"result", result}}));
+            if (!result["ok"].boolean()) toast("error", result["error"].str());
+            else if (type == "git.branch") toast("ok", "已切換到新分支 " + result["branch"].str());
+            else if (type == "git.pr") toast("ok", "PR 已建立");
+            if (type == "git.branch" && result["ok"].boolean()) send(J({{"type", "git.reload"}, {"id", id}}));
+        });
+    }).detach();
 }

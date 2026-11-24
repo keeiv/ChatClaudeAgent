@@ -878,6 +878,56 @@ window.MockBackend = (() => {
         }));
         break;
       }
+      case 'schedule.save': {
+        settings.schedules = (settings.schedules || []).filter(s => s.id !== m.schedule.id);
+        settings.schedules.push({ id: m.schedule.id || 's' + Date.now(), ...m.schedule });
+        settingsOut();
+        break;
+      }
+      case 'schedule.remove':
+        settings.schedules = (settings.schedules || []).filter(s => s.id !== m.scheduleId);
+        settingsOut();
+        break;
+      case 'worktree.queue':
+        emit({ type: 'toast', level: 'info', text: m.enabled ? '已加入合併佇列' : '已移出合併佇列' });
+        break;
+      case 'worktree.resolve':
+        emit({ type: 'toast', level: 'info', text: '模擬：已在隔離工作區開始解衝突' });
+        break;
+      case 'git.branch': case 'git.pr': case 'git.checks': {
+        const st = states[m.id];
+        if (st && st.task) {
+          if (m.type === 'git.branch') st.task.branch = (m.name || '').startsWith('cca/') ? m.name : 'cca/' + m.name;
+          if (m.type === 'git.pr') st.task.pr = { url: 'https://github.com/example/shop-api/pull/12', checks: [] };
+          if (m.type === 'git.checks') st.task.pr.checks = [{ name: 'test', state: 'FAILURE', bucket: 'fail', link: '' }, { name: 'lint', state: 'SUCCESS', bucket: 'pass', link: '' }];
+          stateOut(m.id);
+        }
+        break;
+      }
+      case 'pipelines.list':
+        later(30, () => emit({ type: 'pipelines.result', reqId: m.reqId, ok: true, items: [{ file: 'bugfix.json', name: '修 bug：重現、修正、驗證',
+          description: '', error: '', pipeline: { nodes: [{ id: 'author', name: 'Claude', backend: 'claude', role: 'write', model: '' },
+            { id: 'reviewer', name: 'GPT', backend: 'codex', role: 'review', model: '' }], maxCycles: 2, acceptance: '先重現再修', requireTests: true, routing: 'full' } }] }));
+        break;
+      case 'pipelines.save':
+        later(30, () => emit({ type: 'pipelines.result', reqId: m.reqId, ok: /^[A-Za-z0-9_-]{1,40}$/.test(m.file || ''),
+          error: /^[A-Za-z0-9_-]{1,40}$/.test(m.file || '') ? '' : '範本檔名只能用英文字母、數字、- 和 _，最多 40 字' }));
+        break;
+      case 'rules.get':
+        later(30, () => emit({ type: 'rules.result', reqId: m.reqId, ok: true, folder: 'C:\\Projects\\shop-api',
+          files: [{ name: 'AGENTS.md', exists: true, text: '# 規則\n- 用 TypeScript\n' }, { name: 'CLAUDE.md', exists: false, text: '' }],
+          suggestions: [{ text: '給 APPROVE 之前要先讀檔、搜尋或執行測試，並在回覆裡說明證據。', count: 3 }] }));
+        break;
+      case 'rules.save':
+        later(30, () => emit({ type: 'rules.result', reqId: m.reqId, ok: true, error: '' }));
+        break;
+      case 'files.search': {
+        const all = ['src/cart.ts', 'src/discount.ts', 'src/server.ts', 'tests/discount.test.ts', 'README.md', 'package.json'];
+        const q = (m.query || '').toLowerCase();
+        const items = all.filter(p => p.toLowerCase().includes(q));
+        later(30, () => emit({ type: 'files.found', reqId: m.reqId, items, scanned: all.length, truncated: false }));
+        break;
+      }
       case 'folder.pick':
         later(100, () => emit({ type: 'folder.picked', reqId: m.reqId, path: 'C:\\Projects\\demo-app' }));
         break;
@@ -944,6 +994,19 @@ window.MockBackend = (() => {
       case 'daily.set':
         Object.assign(settings.daily, m);
         delete settings.daily.type;
+        settingsOut();
+        break;
+      case 'dirtycheck.set':
+        settings.dirtyCheck = !!m.enabled;
+        settingsOut();
+        break;
+      case 'group.startAnyway': {
+        const c = convs.find((x) => x.id === m.id);
+        if (c) { c.startPending = false; convsOut(); }
+        break;
+      }
+      case 'notifications.set':
+        settings.notifications = { enabled: !!m.enabled };
         settingsOut();
         break;
       case 'humanize.set':

@@ -1240,7 +1240,58 @@ static void testTaskLedger() {
     CHECK(loadTask(task["conv_id"].str()).isNull());
 }
 
+// Protected paths: the matcher used after every turn, and the cleaning that refuses paths outside the project.
+static void testProtectedPaths() {
+    CHECK(protectedMatch("migrations/", "migrations/0001_init.sql"));
+    CHECK(protectedMatch("migrations/", "Migrations/deep/x.sql"));  // Windows paths ignore case
+    CHECK(!protectedMatch("migrations/", "src/migrations.cpp"));
+    CHECK(protectedMatch("*.lock", "yarn.lock"));
+    CHECK(protectedMatch("*.lock", "packages/web/pnpm.lock"));  // no slash: any depth, like .gitignore
+    CHECK(!protectedMatch("*.lock", "lockfile.txt"));
+    CHECK(protectedMatch(".github/", ".github/workflows/ci.yml"));
+    CHECK(protectedMatch("src/*.env", "src/prod.env"));
+    CHECK(!protectedMatch("src/*.env", "src/config/prod.env"));  // * stays inside one folder
+    CHECK(protectedMatch("src/**/secrets.*", "src/a/b/secrets.json"));
+    CHECK(protectedMatch("src/**/secrets.*", "src/secrets.json"));
+    CHECK(protectedMatch("docs", "docs/readme.md"));  // a folder named without "/" covers what is inside
+    CHECK(protectedMatch("config\\prod.json", "config/prod.json"));
+    CHECK(!protectedMatch("?.txt", "ab.txt"));
+    CHECK_EQ(sanitizeProtectedPattern("  ./Migrations/ "), std::string("migrations/"));
+    CHECK_EQ(sanitizeProtectedPattern("C:/Windows/"), std::string(""));
+    CHECK_EQ(sanitizeProtectedPattern("/etc/passwd"), std::string(""));
+    CHECK_EQ(sanitizeProtectedPattern("../outside"), std::string(""));
+    CHECK_EQ(sanitizeProtectedPattern("a/../b"), std::string(""));
+    CHECK_EQ(sanitizeProtectedPattern(std::string(201, 'a')), std::string(""));
+    CHECK_EQ(sanitizeProtectedPattern("bad\tname"), std::string(""));
+}
+
+// "@path" mentions: only existing project paths reach the agents, and the picker skips dependency folders.
+static void testMentions() {
+    const std::wstring dir = util::joinPath(util::getEnv(L"TEMP"), util::widen("cca-mention-" + util::newId()));
+    util::ensureDir(util::joinPath(dir, L"src"));
+    util::ensureDir(util::joinPath(util::joinPath(dir, L"node_modules"), L"pkg"));
+    util::writeFileAtomic(util::joinPath(util::joinPath(dir, L"src"), L"cart.ts"), "a\nb\nc\n");
+    util::writeFileAtomic(util::joinPath(dir, L"README.md"), "readme");
+    util::writeFileAtomic(util::joinPath(util::joinPath(util::joinPath(dir, L"node_modules"), L"pkg"), L"cart.js"),
+                          "x");
+    const std::string note = mentionNote(
+        dir, "看 @src/cart.ts#L2-3，還有 @README.md。寄信到 me@example.com，@../secret 與 @missing.txt 不算");
+    CHECK(note.find("src/cart.ts（3 行，第 2–3 行）") != std::string::npos);
+    CHECK(note.find("README.md（1 行）") != std::string::npos);
+    CHECK(note.find("example.com") == std::string::npos);
+    CHECK(note.find("secret") == std::string::npos);
+    CHECK(note.find("missing.txt") == std::string::npos);
+    CHECK(mentionNote(dir, "沒有提及任何檔案").empty());
+    CHECK(mentionNote(L"", "@README.md").empty());
+    const Json found = searchProjectFiles(dir, "cart", 10);
+    CHECK_EQ(found["items"].size(), (size_t)1);
+    CHECK_EQ(found["items"].at(0).str(), std::string("src/cart.ts"));
+    CHECK_EQ(searchProjectFiles(dir, "", 10)["items"].size(), (size_t)2);
+}
+
 int main() {
+    testMentions();
+    testProtectedPaths();
     testClaudeUsage();
     testTaskLedger();
     testJson();

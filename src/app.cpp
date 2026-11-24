@@ -164,6 +164,11 @@ void App::load() {
         c->cursorSession = m["cursorSession"].str();
         c->cursorModel = m["cursorModel"].str();
         c->cursorMember = c->kind == "group" && m["cursorMember"].boolean();
+        c->limitTokens = std::clamp<long long>(m["limitTokens"].i64(0), 0, 100000000);
+        c->limitMinutes = (int)std::clamp<long long>(m["limitMinutes"].i64(0), 0, 1440);
+        for (const auto& p : m["protectedPaths"].items())
+            if (!sanitizeProtectedPattern(p.str()).empty() && c->protectedPaths.size() < 40)
+                c->protectedPaths.push_back(sanitizeProtectedPattern(p.str()));
         c->lead = m["lead"].str() == "codex" ? "codex" : "claude";
         c->autoFallback = m["autoFallback"].boolean(true);
         c->contextPending = c->lead == "codex";
@@ -229,6 +234,14 @@ bool App::saveConversations(const std::string& omit) {
                      {"cursorSession", c->cursorSession},
                      {"cursorModel", c->cursorModel},
                      {"cursorMember", c->cursorMember},
+                     {"limitTokens", c->limitTokens},
+                     {"limitMinutes", c->limitMinutes},
+                     {"protectedPaths",
+                      [&] {
+                          Json a = Json::array();
+                          for (const auto& p : c->protectedPaths) a.push(p);
+                          return a;
+                      }()},
                      {"maxRounds", c->maxRounds},
                      {"regressionGuard", c->regressionGuard},
                      {"testCommand", c->testCommand},
@@ -298,6 +311,77 @@ void App::send(const Json& msg) {
     if (send_ && uiReady_) send_(msg.dump());
 }
 
+std::string App::taskLimitProblem(Conversation& c) {
+    if (!c.task.isObject() || (c.limitTokens <= 0 && c.limitMinutes <= 0)) return "";
+    // After a pause the user's "continue" grants another budget of the same size (groupContinue records it).
+    const long long used = c.task["usage_tokens"].i64() - c.task["limit_ack_tokens"].i64();
+    const long long since = c.task["limit_ack_at"].i64(c.task["created"].i64(util::nowMs()));
+    const long long minutes = (util::nowMs() - since) / 60000;
+    std::string why;
+    if (c.limitTokens > 0 && used >= c.limitTokens)
+        why = "這個任務已用 " + std::to_string(used) + " tokens，達到上限 " + std::to_string(c.limitTokens);
+    else if (c.limitMinutes > 0 && minutes >= c.limitMinutes)
+        why =
+            "這個任務已進行 " + std::to_string(minutes) + " 分鐘，達到上限 " + std::to_string(c.limitMinutes) + " 分鐘";
+    if (why.empty()) return "";
+    c.task["limit_hit"] = true;
+    saveTask(c.task);
+    return why + "；按繼續會再給同樣的額度，或結束任務。";
+}
+
+void App::startGroupChecked(Conversation& c, const std::string& text) {
+    c.pendingStart.clear();
+    // Outside a Git work tree there is nothing to mix up, and the request starts without waiting for a worker.
+    bool repo = false;
+    for (std::wstring dir = c.cwd; !dir.empty() && !repo;) {
+        repo = util::dirExists(util::joinPath(dir, L".git")) || util::fileExists(util::joinPath(dir, L".git"));
+        const size_t slash = dir.find_last_of(L"\\/");
+        if (slash == std::wstring::npos || slash < 3) break;
+        dir = dir.substr(0, slash);
+    }
+    if (!settings_["dirtyCheck"].boolean(true) || !repo || !util::dirExists(c.cwd) || c.group.active) {
+        groupStart(c, text);
+        return;
+    }
+    c.checkingChanges = true;
+    c.stateDirty = true;
+    std::weak_ptr<int> life = lifetime_;
+    std::thread([this, life, convId = c.id, cwd = c.cwd, text] {
+        Json changes = gitWorkingChanges(cwd);
+        postToUi([this, life, convId, text, changes] {
+            if (life.expired()) return;
+            Conversation* c = find(convId);
+            if (!c) return;
+            c->checkingChanges = false;
+            c->stateDirty = true;
+            const Json& files = changes["files"];
+            if (!changes["ok"].boolean() || files.empty()) {
+                groupStart(*c, text);
+                return;
+            }
+            // The request waits; AI edits would otherwise land in the same Git diff as the user's own work.
+            c->pendingStart = text;
+            Json shown = Json::array();
+            for (const auto& f : files.items())
+                if (shown.size() < 20) shown.push(f);
+            pushMessage(*c, J({{"author", "system"},
+                               {"kind", "dirty"},
+                               {"files", shown},
+                               {"count", (long long)files.size()},
+                               {"request", util::truncateUtf8(text, 600)},
+                               {"text", "專案裡有 " + std::to_string(files.size()) +
+                                            " 個還沒提交的修改。AI 開工後，它的修改會和這些混在同一份 Git 差異裡；"
+                                            "可以先到版本控制提交，或照常開始。"}}));
+            sendConvs();
+        });
+    }).detach();
+}
+
+void App::notify(const Conversation& c, const std::string& title, const std::string& body) {
+    if (!notifier || !settings_["notifications"]["enabled"].boolean(true)) return;
+    notifier(c.name + "：" + title, util::truncateUtf8(util::trim(body), 400), c.id);
+}
+
 void App::toast(const std::string& level, const std::string& text) {
     send(J({{"type", "toast"}, {"level", level}, {"text", text}}));
 }
@@ -361,6 +445,15 @@ Json App::convMeta(const Conversation& c) const {
                                  {"cursor", agentExhausted(AgentKind::Cursor)}})},
                 {"geminiMember", c.geminiMember},
                 {"cursorMember", c.cursorMember},
+                {"startPending", !c.pendingStart.empty()},
+                {"limitTokens", c.limitTokens},
+                {"limitMinutes", c.limitMinutes},
+                {"protectedPaths",
+                 [&] {
+                     Json a = Json::array();
+                     for (const auto& p : c.protectedPaths) a.push(p);
+                     return a;
+                 }()},
                 {"daily", c.daily},
                 {"localMembers",
                  [&] {
@@ -498,6 +591,8 @@ void App::tick() {
     tickUpdate(now);
     tickGit(now);
     tickAutoResume(now);
+    tickSchedules(now);
+    tickMergeQueue(now);
     for (auto& cp : convs_) {
         Conversation& c = *cp;
         tickQueue(c);
@@ -719,6 +814,12 @@ bool App::sendToAgent(Conversation& c, AgentKind k, const std::string& text, std
     c.guardResend[slot(k)] = false;
     if (!c.group.pipeline && k == AgentKind::Claude && c.autoFallback && claudeLimited())
         return takeOver(c, "Claude 額度已耗盡", error);
+    if (c.kind == "group" && c.group.active) {
+        if (std::string why = taskLimitProblem(c); !why.empty()) {
+            if (error) *error = why;
+            return false;
+        }
+    }
     bool daily = c.daily && c.kind != "group";
     if (!daily && (c.cwd.empty() || !util::dirExists(c.cwd))) {
         if (error) *error = "請先選擇專案資料夾";
@@ -863,6 +964,7 @@ void App::sendFailed(Conversation& c, AgentKind k, const std::string& error) {
 bool App::anyBusy(const Conversation& c) const {
     if (c.gemini && c.gemini->busy()) return true;
     if (c.cursor && c.cursor->busy()) return true;
+    if (c.protecting || c.checkingChanges) return true;
     if (qualityBusy_.count(c.id)) return true;
     const auto opinion = c.collaboration["opinion"]["status"].str();
     if (opinion == "running" || opinion == "summarizing") return true;
@@ -927,6 +1029,8 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
     if (!cp) return;
     Conversation& c = *cp;
     int i = slot(k);
+    // Protected paths are checked before anything reacts to the finished turn (handoff, guard, next checkpoint).
+    if (ev.kind == K::TurnDone && protectTurn(c, k, ev)) return;
     contextEvent(c, k, ev);
     const Json& d = ev.data;
 
@@ -1151,6 +1255,8 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
         b["agent"] = agentName(k);
         blocks.push(b);
         if (windowAction) windowAction("flash");
+        notify(c, ev.kind == K::Approval ? "需要你核准" : "需要你回答",
+               d["title"].str(nameOf(k) + (ev.kind == K::Approval ? " 等你決定" : " 有問題要問你")));
         break;
     }
     case K::Resolved: {
@@ -1184,6 +1290,10 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
     }
     case K::Usage: {
         msg["usage"] = d;
+        if (c.kind == "group" && c.task.isObject()) {
+            // Every member's reported tokens count toward the task budget, whatever the billing.
+            c.task["usage_tokens"] = c.task["usage_tokens"].i64() + d["inputTokens"].i64() + d["outputTokens"].i64();
+        }
         Json node = pipelineNode(c);
         if (c.group.pipeline && (node["backend"].str() == "api" || node["backend"].str() == "local")) {
             Json& usage = c.task["costs"];
@@ -1327,7 +1437,13 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
             Json copy = live ? *live : Json::object();
             groupTurnDone(c, k, copy, status);
         }
-        if (c.kind != "group") finishPlan(c, status);
+        if (c.kind != "group") {
+            finishPlan(c, status);
+            // A direct message only notifies after a wait worth stepping away for.
+            const long long took = msg["endedAt"].i64() - msg["ts"].i64();
+            if (status == "completed" && took >= 20000)
+                notify(c, nameOf(k) + " 回覆了", util::truncateUtf8(messageText(msg), 200));
+        }
         return;
     }
     default:
@@ -1420,6 +1536,24 @@ void App::applySettings(Conversation& c, const Json& s) {
     if (s.has("daily") && c.kind != "group") c.daily = s["daily"].boolean();
     if (s.has("geminiMember") && c.kind == "group") c.geminiMember = s["geminiMember"].boolean();
     if (s.has("cursorMember") && c.kind == "group") c.cursorMember = s["cursorMember"].boolean();
+    if (c.kind == "group" && s.has("limitTokens"))
+        c.limitTokens = std::clamp<long long>(s["limitTokens"].i64(0), 0, 100000000);
+    if (c.kind == "group" && s.has("limitMinutes"))
+        c.limitMinutes = (int)std::clamp<long long>(s["limitMinutes"].i64(0), 0, 1440);
+    if (s.has("protectedPaths") && s["protectedPaths"].isArray()) {
+        std::vector<std::string> kept;
+        std::string refused;
+        for (const auto& p : s["protectedPaths"].items()) {
+            const std::string clean = sanitizeProtectedPattern(p.str());
+            if (clean.empty()) refused = p.str();
+            else if (kept.size() < 40 && std::find(kept.begin(), kept.end(), clean) == kept.end())
+                kept.push_back(clean);
+        }
+        if (!refused.empty())
+            toast("error", "受保護路徑只接受專案內的相對路徑或萬用字元（不能是絕對路徑或含 ..）：" +
+                               util::truncateUtf8(refused, 80));
+        else c.protectedPaths = kept;
+    }
     if (s.has("localMembers") && c.kind == "group") {
         c.localMembers.clear();
         for (const auto& l : s["localMembers"].items()) {
@@ -1523,7 +1657,9 @@ void App::onUiMessage(const std::string& text) {
         return;
     }
 
-    if (handleTheme(m) || handleRouting(m) || handleDesk(m) || handleGit(m) || handleExtensions(m)) return;
+    if (handleTheme(m) || handleRouting(m) || handleDesk(m) || handleGit(m) || handleExtensions(m) || handleRules(m) ||
+        handleSchedules(m))
+        return;
     if (type == "ready") {
         updater::confirmStartup();
         uiReady_ = true;
@@ -1582,6 +1718,10 @@ void App::onUiMessage(const std::string& text) {
         bool url = util::startsWith(target, "https://") || util::startsWith(target, "http://");
         bool folder = !url && util::dirExists(util::widen(target));
         if ((url || folder) && openExternal) openExternal(util::widen(target));
+        return;
+    }
+    if (type == "files.search") {
+        searchFiles(m);
         return;
     }
     if (type == "folder.pick") {
@@ -1678,6 +1818,18 @@ void App::onUiMessage(const std::string& text) {
     if (type == "local.set") { handleLocalSet(m); return; }
     if (type == "daily.set") { handleDailySet(m); return; }
     if (type == "humanize.set") { handleHumanizeSet(m); return; }
+    if (type == "dirtycheck.set") {
+        if (m["enabled"].isBool()) settings_["dirtyCheck"] = m["enabled"];
+        metaDirty_ = true;
+        sendSettings();
+        return;
+    }
+    if (type == "notifications.set") {
+        if (m["enabled"].isBool()) settings_["notifications"]["enabled"] = m["enabled"];
+        metaDirty_ = true;
+        sendSettings();
+        return;
+    }
     if (type == "visual.set") {
         std::string mode = m["mode"].str();
         if (mode == "auto" || mode == "compact" || mode == "off") settings_["visual"]["mode"] = mode;
@@ -1795,6 +1947,8 @@ void App::onUiMessage(const std::string& text) {
         if (text.empty()) return;
         // A CCA plugin command ("/name rest") becomes its template; what the agents receive is the expanded text.
         expandExtensionCommand(*c, text);
+        // "@path" stays visible in the message; agents also get the list of mentioned paths that really exist.
+        text += mentionNote(c->cwd, text);
         for (const auto& other : convs_) {
             if (other.get() == c || other->preparing != "worktree") continue;
             auto normalize = [](const std::wstring& path) {
@@ -1843,7 +1997,7 @@ void App::onUiMessage(const std::string& text) {
                 pipelineNext(*c);
                 return;
             }
-            groupStart(*c, text);
+            startGroupChecked(*c, text);
             return;
         }
         AgentKind k = c->kind == "gemini"                         ? AgentKind::Gemini
@@ -1863,6 +2017,27 @@ void App::onUiMessage(const std::string& text) {
             pushMessage(*c, J({{"author", "system"}, {"kind", "error"}, {"text", err}}));
         }
         c->stateDirty = true;
+    } else if (type == "task.ciFix") {
+        // Failing checks go back to the group as a new request; the agents read the logs themselves.
+        if (c->kind != "group" || c->group.active || anyBusy(*c) || !c->task.isObject()) return;
+        std::string failed;
+        for (const auto& check : c->task["pr"]["checks"].items())
+            if (check["bucket"].str() == "fail") failed += (failed.empty() ? "" : "、") + check["name"].str();
+        if (failed.empty()) {
+            toast("info", "目前沒有失敗的檢查");
+            return;
+        }
+        pushMessage(*c, J({{"author", "system"}, {"kind", "info"}, {"text", "CI 沒有通過，交回群組修正：" + failed}}));
+        startGroupChecked(*c,
+                          "PR " + c->task["pr"]["url"].str() + " 的 CI 檢查沒有通過：" + failed +
+                              "。請用 gh pr checks 與 gh run view --log-failed 查看失敗原因，修正後在本機重跑相關測試，"
+                              "提交到同一個分支。");
+    } else if (type == "group.startAnyway") {
+        if (c->kind != "group" || c->pendingStart.empty() || c->group.active || anyBusy(*c)) return;
+        const std::string text = c->pendingStart;
+        c->pendingStart.clear();
+        groupStart(*c, text);
+        sendConvs();
     } else if (type == "conv.stop") {
         c->userStopped = true;
         c->takeoverRequested = false;

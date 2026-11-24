@@ -77,6 +77,41 @@ window.CCAPlatform = (() => {
     ]));
     const list = h('div', { class: 'pipeline-editor' });
     let bindings = [], save, localRequested = false;
+    // Project templates (.cca/pipelines/*.json): loading fills this editor; nothing is applied until "儲存流程".
+    const templateSelect = h('select', { class: 'select', 'aria-label': '專案範本' }, h('option', { value: '' }, '載入專案範本…'));
+    let templates = [];
+    const loadTemplates = async () => {
+      const r = await api.request({ type: 'pipelines.list', id: c.id });
+      templates = r.ok ? r.items : [];
+      templateSelect.replaceChildren(h('option', { value: '' }, templates.length ? '載入專案範本…' : '專案裡沒有流程範本'),
+        ...templates.map((t, i) => h('option', { value: String(i), disabled: !!t.error, title: t.description || '' },
+          t.name + (t.error ? '（無效：' + t.error + '）' : ''))));
+    };
+    templateSelect.onchange = () => {
+      const t = templates[+templateSelect.value];
+      if (!t || !t.pipeline) return;
+      nodes = JSON.parse(JSON.stringify(t.pipeline.nodes || []));
+      cycles.value = t.pipeline.maxCycles || 3;
+      acceptance.value = t.pipeline.acceptance || '';
+      requireTests.checked = t.pipeline.requireTests !== false;
+      routing.value = t.pipeline.routing || 'auto';
+      draw();
+      api.toast('info', '已載入範本「' + t.name + '」，檢查後按儲存流程才會套用');
+    };
+    const saveTemplate = () => {
+      const file = input('', 'text'); file.placeholder = '例如 bugfix';
+      const name = input('', 'text'); name.placeholder = '例如 修 bug：重現、修正、驗證';
+      const close = modal({ title: '存成專案範本', desc: '存到專案的 .cca/pipelines/，可以和程式碼一起提交。',
+        body: [field('檔名（英文、數字、- 和 _）', file), field('顯示名稱', name)],
+        foot: done => [button('取消', done, 'ghost'), button('保存', async () => {
+          const r = await api.request({ type: 'pipelines.save', id: c.id, file: file.value.trim(), name: name.value.trim(),
+            pipeline: { nodes, maxCycles: Number(cycles.value), acceptance: acceptance.value, requireTests: requireTests.checked, routing: routing.value } });
+          if (!r.ok) { api.toast('error', r.error); return; }
+          api.toast('ok', '範本已保存'); done(); loadTemplates();
+        }, 'primary')] });
+      return close;
+    };
+    const templateBar = h('div', { class: 'pipeline-templates' }, templateSelect, button('存成專案範本', saveTemplate));
     const canSave = () => bindings.every(binding => binding.valid);
     const refresh = () => {
       bindings.forEach(binding => binding.update());
@@ -191,11 +226,12 @@ window.CCAPlatform = (() => {
       refresh();
     };
     draw();
+    loadTemplates();
     refreshEditor = refresh;
     modal({ title: '多代理流程', wide: true,
       desc: '每位代理有獨立模型與會話；本地模型維持唯讀。流程變更會套用到下一個任務。',
       onClose: () => { if (refreshEditor === refresh) refreshEditor = null; },
-      body: [list, button('新增 Gemini 審查者', () => {
+      body: [templateBar, list, button('新增 Gemini 審查者', () => {
         nodes.push({ id: 'gemini-' + Date.now(), name: 'Gemini', backend: 'gemini', role: 'review', model: '' });
         routing.value = 'full'; draw();
       }), button('新增 Cursor 審查者', () => {

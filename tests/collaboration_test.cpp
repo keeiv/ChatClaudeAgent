@@ -204,6 +204,35 @@ int wmain() {
                 std::string text;
                 util::readFile(util::joinPath(origin, L"shared.txt"), text);
                 check(text == "third task\n", "conflict preview and refusal preserve the target file");
+                // Conflict help: the target comes into the task worktree, never into the project checkout.
+                const auto fourPath = util::widen(four["path"].str());
+                Json resolve = startWorktreeResolve(four);
+                std::string inWorktree;
+                util::readFile(util::joinPath(fourPath, L"shared.txt"), inWorktree);
+                check(resolve["ok"].boolean() && resolve["conflicts"].size() == 1 &&
+                          resolve["conflicts"].at(0).str() == "shared.txt" &&
+                          inWorktree.find("<<<<<<<") != std::string::npos,
+                      "the merge target is brought into the worktree with its conflicts listed");
+                util::readFile(util::joinPath(origin, L"shared.txt"), text);
+                check(text == "third task\n", "resolving happens only in the worktree");
+                check(!startWorktreeResolve(four)["ok"].boolean(), "a second resolve waits for the open merge");
+                // What the agents are asked to do: resolve, add and commit the merge in the worktree.
+                util::writeFileAtomic(util::joinPath(fourPath, L"shared.txt"), "third and fourth\n");
+                check(git(fourPath, {L"add", L"shared.txt"}) && git(fourPath, {L"commit", L"--no-edit"}),
+                      "the resolved merge commits in the worktree");
+                preview = checkTaskMerge(four, false, "", "");
+                check(preview["clean"].boolean() &&
+                          checkTaskMerge(four, true, preview["target"].str(), preview["source"].str())["merged"]
+                              .boolean(),
+                      "after resolving, the task merges back after a fresh check");
+                util::readFile(util::joinPath(origin, L"shared.txt"), text);
+                check(text == "third and fourth\n", "the resolved content reaches the project");
+                Json five = createTaskWorktree(origin, "fifth");
+                commit(util::widen(five["path"].str()), L"five.txt", "fifth\n");
+                Json none = startWorktreeResolve(five);
+                check(none["ok"].boolean() && none["conflicts"].empty() &&
+                          !git(util::widen(five["path"].str()), {L"rev-parse", L"--verify", L"MERGE_HEAD"}),
+                      "without conflicts nothing is left half merged");
             } else check(false, "conflict fixtures created");
             util::writeFileAtomic(util::joinPath(a, L"uncommitted.txt"), "keep me\n");
             check(!checkTaskMerge(one, false, "", "")["ok"].boolean(),

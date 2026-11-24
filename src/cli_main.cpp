@@ -208,6 +208,19 @@ const Command kCommands[] = {
     {"/plugins", "[enable|disable ID|scan|open]", "CCA 插件：主題、對話模式與指令"},
     {"/plugin-mode", "[模式ID|off]", "套用或清除這個對話的插件模式"},
     {"/test-guard", "<指令|on|off>", "審查者改檔後跑測試，轉紅就還原它的修改"},
+    {"/protect", "[add|remove 規則|off]", "受保護路徑：AI 改到就還原，例如 migrations/、*.lock"},
+    {"/notify", "[on|off]", "需要你回來處理時響提示音（核准、暫停、完成）"},
+    {"/find", "<文字>", "列出專案裡符合的檔案；訊息裡用 @路徑 指定給 AI"},
+    {"/limit", "<萬tokens> [分鐘]|off", "群組任務的用量上限，超過就先暫停"},
+    {"/rules", "", "專案規則檔的位置與常被退回的原因"},
+    {"/task-branch", "[名稱]", "為目前的群組任務建立 cca/ 分支並切換過去"},
+    {"/resolve", "", "在隔離 worktree 合併目標分支，把衝突交給 AI 解開並提交"},
+    {"/merge-queue", "[on|off]", "把這個群組的 worktree 任務加入或移出合併佇列"},
+    {"/schedule", "[HH:MM 1-5 需求|remove ID]", "在指定時間把需求送進這個對話（只在 CCA 開著時）"},
+    {"/pr", "", "用 gh 從任務紀錄建立 PR（先 /git 推送）"},
+    {"/ci", "[fix]", "讀取任務 PR 的 CI 結果；fix 把失敗交回群組修正"},
+    {"/start", "", "專案有未提交的修改時，仍照常開始等待中的群組任務"},
+    {"/dirty-check", "[on|off]", "群組任務開始前，專案有未提交的修改就先停下來問"},
     {"/locals", "", "邀請或移除本地審查員"},
     {"/rename", "<名稱>", "改群組名稱"},
     {"/clear", "", "清除這個對話（AI 也會忘記）"},
@@ -2799,6 +2812,30 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
             return;
         }
         std::wstring path = util::widen(args);
+        if (cmd == "/pipeline" && !args.empty() && args.find_first_of("\\/.:") == std::string::npos) {
+            // A bare name is a project template: .cca/pipelines/<name>.json, versioned with the code.
+            path = util::joinPath(util::joinPath(util::joinPath(util::widen((*c)["cwd"].str()), L".cca"), L"pipelines"),
+                                  util::widen(args + ".json"));
+        }
+        if (cmd == "/pipeline" && args.empty()) {
+            WIN32_FIND_DATAW fd;
+            const std::wstring dir =
+                util::joinPath(util::joinPath(util::widen((*c)["cwd"].str()), L".cca"), L"pipelines");
+            HANDLE h = FindFirstFileW(util::joinPath(dir, L"*.json").c_str(), &fd);
+            if (h == INVALID_HANDLE_VALUE) {
+                note(
+                    "專案裡沒有流程範本（.cca/pipelines/*.json）。用 /pipeline 檔案路徑 載入設定，或 /pipeline off "
+                    "關閉。");
+                return;
+            }
+            note("專案流程範本（/pipeline 名稱 套用）：");
+            do {
+                std::string name = util::narrow(fd.cFileName);
+                note("  " + name.substr(0, name.size() - 5));
+            } while (FindNextFileW(h, &fd));
+            FindClose(h);
+            return;
+        }
         if (path.size() >= 2 && path.front() == L'"' && path.back() == L'"') path = path.substr(1, path.size() - 2);
         std::string data;
         if (args.empty() || !util::readFile(path, data) || data.size() > 65536) {
@@ -2810,7 +2847,11 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
             toast("設定檔必須是 JSON 物件", "error");
             return;
         }
-        if (cmd == "/pipeline") ui(J({{"type", "pipeline.set"}, {"id", current_}, {"pipeline", config}}));
+        // A template file wraps the pipeline with a name and description; the host validates either form.
+        if (cmd == "/pipeline")
+            ui(J({{"type", "pipeline.set"},
+                  {"id", current_},
+                  {"pipeline", config["pipeline"].isObject() ? config["pipeline"] : config}}));
         else if (cmd == "/provider-import")
             ui(J({{"type", "provider.save"}, {"provider", config["provider"]}, {"apiKey", config["apiKey"]}}));
         else {
@@ -2990,6 +3031,186 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         toast(args == "off" ? "測試守門已關閉" : "測試守門已送出設定；審查者改檔後會執行測試", "ok");
         return;
     }
+    if (cmd == "/start") {
+        if (!needGroup()) return;
+        if (!(*c)["startPending"].boolean()) {
+            toast("沒有等待中的群組任務", "error");
+            return;
+        }
+        ui(J({{"type", "group.startAnyway"}, {"id", current_}}));
+        return;
+    }
+    if (cmd == "/dirty-check") {
+        if (args != "on" && args != "off") {
+            note(std::string("開工前檢查：") + (settings_["dirtyCheck"].boolean(true) ? "開啟" : "關閉") +
+                 "。用 /dirty-check on 或 off 切換。");
+            return;
+        }
+        ui(J({{"type", "dirtycheck.set"}, {"enabled", args == "on"}}));
+        return;
+    }
+    if (cmd == "/merge-queue") {
+        ui(J({{"type", "worktree.queue"}, {"id", current_}, {"enabled", args != "off"}}));
+        return;
+    }
+    if (cmd == "/schedule") {
+        if (args.empty()) {
+            for (const auto& s : settings_["schedules"].items())
+                if (s["convId"].str() == current_)
+                    note("  " + s["id"].str() + "  " + s["time"].str() + "  " + s["days"].dump() + "  " +
+                         util::truncateUtf8(s["text"].str(), 60));
+            note("用法：/schedule 02:00 1-5 需求文字（星期 0=日…6=六，可寫 1-5 或 1,3,5）；/schedule remove ID");
+            return;
+        }
+        if (util::startsWith(args, "remove ")) {
+            ui(J({{"type", "schedule.remove"}, {"scheduleId", util::trim(args.substr(7))}}));
+            return;
+        }
+        const size_t a = args.find(' '), b = a == std::string::npos ? a : args.find(' ', a + 1);
+        if (b == std::string::npos) {
+            toast("用法：/schedule 02:00 1-5 需求文字", "error");
+            return;
+        }
+        Json days = Json::array();
+        const std::string spec = args.substr(a + 1, b - a - 1);
+        if (spec.size() == 3 && spec[1] == '-' && isdigit((unsigned char)spec[0]) && isdigit((unsigned char)spec[2]))
+            for (int d = spec[0] - '0'; d <= spec[2] - '0'; ++d) days.push(d);
+        else
+            for (char ch : spec)
+                if (isdigit((unsigned char)ch)) days.push(ch - '0');
+        ui(J({{"type", "schedule.save"},
+              {"schedule", J({{"convId", current_},
+                              {"time", args.substr(0, a)},
+                              {"days", days},
+                              {"text", util::trim(args.substr(b + 1))},
+                              {"enabled", true}})}}));
+        return;
+    }
+    if (cmd == "/resolve") {
+        ui(J({{"type", "worktree.resolve"}, {"id", current_}}));
+        return;
+    }
+    if (cmd == "/task-branch" || cmd == "/pr" || cmd == "/ci") {
+        if (!needGroup()) return;
+        if (cmd == "/ci" && args == "fix") {
+            ui(J({{"type", "task.ciFix"}, {"id", current_}}));
+            return;
+        }
+        if (cmd == "/ci") {
+            const Json& checks = state()["task"]["pr"]["checks"];
+            for (const auto& check : checks.items())
+                note("  " + check["name"].str() + "：" + check["bucket"].str() + " " + check["link"].str());
+        }
+        Json msg = J({{"type", cmd == "/task-branch" ? "git.branch"
+                               : cmd == "/pr"        ? "git.pr"
+                                                     : "git.checks"},
+                      {"id", current_}});
+        if (cmd == "/task-branch")
+            msg["name"] = args.empty()
+                              ? "cca/task-" + state()["task"]["task_id"].str().substr(
+                                                  std::max<size_t>(6, state()["task"]["task_id"].str().size()) - 6)
+                              : args;
+        ui(msg);
+        return;
+    }
+    if (cmd == "/rules") {
+        const std::wstring cwd = util::widen((*c)["cwd"].str());
+        if (cwd.empty()) {
+            toast("請先選擇專案資料夾", "error");
+            return;
+        }
+        for (const char* name : {"AGENTS.md", "CLAUDE.md"}) {
+            const std::wstring path = util::joinPath(cwd, util::widen(name));
+            note(std::string(util::fileExists(path) ? "  " : "  （尚未建立）") + util::narrow(path));
+        }
+        note("用你習慣的編輯器修改；Claude 讀 CLAUDE.md，其他成員讀 AGENTS.md。");
+        return;
+    }
+    if (cmd == "/limit") {
+        if (!needGroup()) return;
+        if (args.empty()) {
+            const long long t = (*c)["limitTokens"].i64();
+            const long long m = (*c)["limitMinutes"].i64();
+            note("任務上限：" + (t ? std::to_string(t / 10000) + " 萬 tokens" : std::string("不限 token")) + "、" +
+                 (m ? std::to_string(m) + " 分鐘" : std::string("不限時間")) +
+                 "。用 /limit 50 30 或 /limit off 設定。");
+            return;
+        }
+        long long tokens = 0, minutes = 0;
+        if (args != "off") {
+            const size_t space = args.find(' ');
+            char* end = nullptr;
+            tokens = std::strtoll(args.substr(0, space).c_str(), &end, 10) * 10000;
+            if (space != std::string::npos) minutes = std::strtoll(args.substr(space + 1).c_str(), &end, 10);
+            if (tokens < 0 || minutes < 0) {
+                toast("用法：/limit <萬tokens> [分鐘]，或 /limit off", "error");
+                return;
+            }
+        }
+        ui(J({{"type", "conv.settings"},
+              {"id", current_},
+              {"settings", J({{"limitTokens", tokens}, {"limitMinutes", minutes}})}}));
+        toast(args == "off" ? "任務上限已取消" : "任務上限已設定", "ok");
+        return;
+    }
+    if (cmd == "/find") {
+        const std::wstring cwd = util::widen((*c)["cwd"].str());
+        if (cwd.empty()) {
+            toast("請先選擇專案資料夾", "error");
+            return;
+        }
+        const Json found = searchProjectFiles(cwd, args, 20);
+        if (found["items"].empty()) note("沒有符合「" + args + "」的檔案");
+        for (const auto& p : found["items"].items()) note("  @" + p.str());
+        if (!found["items"].empty()) note("在訊息裡寫 @路徑（可加 #L10-20），AI 會先讀取這些檔案。");
+        return;
+    }
+    if (cmd == "/notify") {
+        if (args != "on" && args != "off") {
+            const bool on = settings_["notifications"]["enabled"].boolean(true);
+            note(std::string("提示音：") + (on ? "開啟" : "關閉") + "。用 /notify on 或 /notify off 切換。");
+            return;
+        }
+        ui(J({{"type", "notifications.set"}, {"enabled", args == "on"}}));
+        toast(args == "on" ? "需要你處理時會響提示音" : "提示音已關閉", "ok");
+        return;
+    }
+    if (cmd == "/protect") {
+        // The host cleans each pattern and refuses absolute paths or "..", so the CLI only edits the list.
+        std::vector<std::string> list;
+        for (const auto& p : (*c)["protectedPaths"].items()) list.push_back(p.str());
+        const size_t space = args.find(' ');
+        const std::string verb = args.substr(0, space),
+                          rest = space == std::string::npos ? "" : util::trim(args.substr(space));
+        if (args.empty()) {
+            if (list.empty()) note("受保護路徑：未設定。用 /protect add migrations/ 新增。");
+            else {
+                note("受保護路徑（AI 改到會被還原）：");
+                for (const auto& p : list) note("  " + p);
+            }
+            return;
+        }
+        if (verb == "off") list.clear();
+        else if (verb == "add" && !rest.empty()) list.push_back(rest);
+        else if (verb == "remove" && !rest.empty()) {
+            auto it = std::find(list.begin(), list.end(), rest);
+            if (it == list.end()) {
+                toast("沒有這條規則：" + rest, "error");
+                return;
+            }
+            list.erase(it);
+        } else {
+            toast("用法：/protect、/protect add 規則、/protect remove 規則、/protect off", "error");
+            return;
+        }
+        Json arr = Json::array();
+        for (const auto& p : list) arr.push(p);
+        ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"protectedPaths", arr}})}}));
+        if (const Json* after = conv()) {
+            toast("受保護路徑：" + std::to_string((*after)["protectedPaths"].size()) + " 條規則", "ok");
+        }
+        return;
+    }
     if (cmd == "/rename") {
         if (!needGroup()) return;
         if (args.empty()) {
@@ -3145,8 +3366,9 @@ int Cli::run(int argc, wchar_t** argv) {
     app_->hostFlavor = "cli";
     app_->windowAction = [this](const std::string& action) {
         if (action == "close") quit_ = true;
-        if (action == "flash") term::write("\a");  // the terminal's own "needs attention"
     };
+    // The terminal's own "needs attention"; approvals reach it through notify(), which honours /notify off.
+    app_->notifier = [](const std::string&, const std::string&, const std::string&) { term::write("\a"); };
     app_->openExternal = [](const std::wstring& target) {
         ShellExecuteW(nullptr, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     };

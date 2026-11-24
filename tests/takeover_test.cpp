@@ -12,6 +12,7 @@
 #include "routing.hpp"
 #include "themes.hpp"
 #include "util.hpp"
+#include "workspaces.hpp"
 
 static std::mutex mu;
 static std::deque<std::function<void()>> queue;
@@ -219,6 +220,12 @@ struct TakeoverTestAccess {
             app.cursorLaunchOverride_ = {exe, util::joinPath(root, L"fixture-cursor\\index.js"), L"fixture"};
             app.cursorModels_ = Json::array();
             app.cursorModels_.push(J({{"value", "grok-fixture"}, {"displayName", "Grok Fixture"}}));
+            // Notifications reach the host's notifier unless the user turned them off.
+            std::vector<std::string> notes;
+            app.notifier = [&](const std::string& title, const std::string&, const std::string&) {
+                notes.push_back(title);
+            };
+            app.settings_["notifications"]["enabled"] = !ask;
             Conversation* c = nullptr;
             for (auto& p : app.convs_)
                 if (p->kind == "group") c = p.get();
@@ -247,16 +254,415 @@ struct TakeoverTestAccess {
                 consensus |= m["kind"].str() == "summary" && m["outcome"].str() == "consensus";
                 skipped |= m["kind"].str() == "skip" && m["agent"].str() == "cursor";
             }
-            if (ask)
+            if (ask) {
                 check(skipped && !reviewed && !c->group.active,
                       "under ask permission Cursor is shown as skipped and never started");
-            else
+                check(notes.empty(), "no notification is sent while notifications are off");
+            } else {
                 check(reviewed && consensus && !skipped && !c->group.active,
                       "Cursor reviews after GPT and the group reaches consensus");
+                bool done = false;
+                for (const auto& n : notes) done |= n.find("協作完成") != std::string::npos;
+                check(done, "a finished collaboration sends a notification");
+            }
+            app.notifier = nullptr;
             app.shutdown();
             pump();
         }
         SetEnvironmentVariableW(L"CURSOR_CONFIG_DIR", nullptr);
+    }
+
+    // A schedule sends the user's request once at its time; the merge queue merges a clean worktree task.
+    static void schedulesAndQueue(const std::wstring& root, const std::wstring& exe) {
+        check(sanitizeSchedule(
+                  J({{"convId", "x"}, {"time", "25:00"}, {"days", Json(Json::Array{Json(1)})}, {"text", "t"}}))
+                  .isNull(),
+              "an impossible time is refused");
+        check(
+            sanitizeSchedule(J({{"convId", "x"}, {"time", "02:00"}, {"days", Json::array()}, {"text", "t"}})).isNull(),
+            "a schedule needs at least one day");
+        std::wstring data = util::joinPath(root, L"schedule-data");
+        util::ensureDir(data);
+        SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+        SetEnvironmentVariableW(L"CCA_TEST_FAILURE", L"");
+        App app([](const std::string&) {});
+        app.claudeStatus_.state = app.codexStatus_.state = "ok";
+        app.claudeStatus_.exe = app.codexStatus_.exe = exe;
+        app.settings_["claudePath"] = util::narrow(exe);
+        app.settings_["codexPath"] = util::narrow(exe);
+        app.settings_["guard"]["enabled"] = false;
+        Conversation* c = app.find("dm-claude");
+        c->cwd = root;
+        c->daily = true;
+        SYSTEMTIME t;
+        GetLocalTime(&t);
+        char clock[8];
+        std::snprintf(clock, sizeof clock, "%02d:%02d", t.wHour, t.wMinute);
+        app.onUiMessage(J({{"type", "schedule.save"},
+                           {"schedule", J({{"convId", c->id},
+                                           {"time", clock},
+                                           {"days", Json(Json::Array{Json((int)t.wDayOfWeek)})},
+                                           {"text", "SCHEDULED_REQUEST"}})}})
+                            .dump());
+        check(app.settings_["schedules"].size() == 1, "a schedule is saved");
+        app.tickSchedules(util::nowMs());
+        auto users = [&] {
+            int n = 0;
+            for (const auto& m : c->messages)
+                n += m["author"].str() == "user" && m["text"].str() == "SCHEDULED_REQUEST";
+            return n;
+        };
+        check(users() == 1, "the request is sent at its time");
+        for (int i = 0; i < 1500 && app.anyBusy(*c); ++i) {
+            pump();
+            Sleep(10);
+        }
+        app.tickSchedules(util::nowMs());
+        check(users() == 1, "a schedule runs once per day");
+        app.onUiMessage(
+            J({{"type", "schedule.remove"}, {"scheduleId", app.settings_["schedules"].at(0)["id"].str()}}).dump());
+        check(app.settings_["schedules"].empty(), "a schedule can be removed");
+
+        // Merge queue over a real worktree.
+        const std::wstring origin = util::joinPath(root, L"queue-origin");
+        util::ensureDir(origin);
+        ProcessOptions g;
+        g.exe = util::findOnPath(L"git");
+        g.cwd = origin;
+        std::string out, err;
+        auto git = [&](const std::wstring& cwd, std::vector<std::wstring> args) {
+            g.cwd = cwd;
+            g.args = std::move(args);
+            return runWait(g, &out, &err, 30000) == 0;
+        };
+        if (!g.exe.empty() && git(origin, {L"init", L"-q", L"-b", L"main"})) {
+            git(origin, {L"config", L"user.name", L"t"});
+            git(origin, {L"config", L"user.email", L"t@t"});
+            util::writeFileAtomic(util::joinPath(origin, L"base.txt"), "base\n");
+            git(origin, {L"add", L"base.txt"});
+            git(origin, {L"commit", L"-qm", L"base"});
+            Json workspace = createTaskWorktree(origin, "queue");
+            const std::wstring tree = util::widen(workspace["path"].str());
+            util::writeFileAtomic(util::joinPath(tree, L"queued.txt"), "from the task\n");
+            git(tree, {L"add", L"queued.txt"});
+            git(tree, {L"-c", L"user.name=t", L"-c", L"user.email=t@t", L"commit", L"-qm", L"task"});
+            Conversation* group = nullptr;
+            for (auto& p : app.convs_)
+                if (p->kind == "group") group = p.get();
+            Json collab = group->collaboration;
+            collab["workspace"] = workspace;
+            app.persistCollaboration(*group, collab);
+            group->cwd = tree;
+            app.onUiMessage(J({{"type", "worktree.queue"}, {"id", group->id}, {"enabled", true}}).dump());
+            check(group->collaboration["mergeQueued"].isNumber(), "a worktree task joins the merge queue");
+            app.tickMergeQueue(util::nowMs() + 10000);
+            for (int i = 0; i < 1500 && app.mergeRunning_; ++i) {
+                pump();
+                Sleep(10);
+            }
+            pump();
+            check(util::fileExists(util::joinPath(origin, L"queued.txt")) && !group->collaboration.has("mergeQueued"),
+                  "the queue merges a clean task back and removes it");
+        }
+        app.shutdown();
+        pump();
+    }
+
+    // A finished task gets its own branch; failed CI checks go back to the group as a new request.
+    static void taskShipping(const std::wstring& root, const std::wstring& exe) {
+        const std::wstring project = util::joinPath(root, L"ship-project");
+        util::ensureDir(project);
+        ProcessOptions g;
+        g.exe = util::findOnPath(L"git");
+        g.cwd = project;
+        std::string out, err;
+        auto git = [&](std::vector<std::wstring> args) {
+            g.args = std::move(args);
+            return runWait(g, &out, &err, 30000);
+        };
+        if (g.exe.empty()) return;
+        git({L"init", L"-q"});
+        util::writeFileAtomic(util::joinPath(project, L"a.txt"), "a\n");
+        git({L"add", L"a.txt"});
+        git({L"-c", L"user.name=t", L"-c", L"user.email=t@t", L"commit", L"-qm", L"base"});
+        std::wstring data = util::joinPath(root, L"ship-data");
+        util::ensureDir(data);
+        SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+        App app([](const std::string&) {});
+        app.claudeStatus_.state = app.codexStatus_.state = "ok";
+        app.claudeStatus_.exe = app.codexStatus_.exe = exe;
+        app.settings_["claudePath"] = util::narrow(exe);
+        app.settings_["codexPath"] = util::narrow(exe);
+        app.settings_["guard"]["enabled"] = false;
+        app.settings_["dirtyCheck"] = false;
+        Conversation* c = nullptr;
+        for (auto& p : app.convs_)
+            if (p->kind == "group") c = p.get();
+        c->cwd = project;
+        c->task = newTask(c->id, "fix the cart\nmore detail", util::nowMs());
+        c->task["status"] = "done";
+        auto drain = [&] {
+            for (int i = 0; i < 1500 && (app.gitBusy_.count(c->id) || app.anyBusy(*c) || c->group.active); ++i) {
+                pump();
+                Sleep(10);
+            }
+            pump();
+        };
+        app.onUiMessage(J({{"type", "git.branch"}, {"id", c->id}, {"name", "bad name;rm"}}).dump());
+        drain();
+        check(c->task["branch"].isNull(), "a branch name with shell characters is refused");
+        app.onUiMessage(J({{"type", "git.branch"}, {"id", c->id}, {"name", "feature-x"}}).dump());
+        drain();
+        git({L"symbolic-ref", L"--short", L"HEAD"});
+        check(util::trim(out) == "cca/feature-x" && c->task["branch"].str() == "cca/feature-x",
+              "the task branch is created under cca/ and recorded on the task");
+        app.onUiMessage(J({{"type", "git.checks"}, {"id", c->id}}).dump());
+        drain();
+        check(c->task["pr"].isNull(), "CI cannot be read before the task has a PR");
+        c->task["pr"] = J({{"url", "https://example.invalid/pr/1"},
+                           {"checks", Json(Json::Array{J({{"name", "unit"}, {"bucket", "fail"}}),
+                                                       J({{"name", "lint"}, {"bucket", "pass"}})})}});
+        app.onUiMessage(J({{"type", "task.ciFix"}, {"id", c->id}}).dump());
+        bool handed = false;
+        for (const auto& m : c->messages) handed |= m["text"].str().find("交回群組修正：unit") != std::string::npos;
+        check(handed && c->group.active, "failed checks start a new group request naming them");
+        drain();
+        app.shutdown();
+        pump();
+    }
+
+    // Pipeline templates are files in the project; only valid pipelines are saved or offered for loading.
+    static void pipelineTemplates(const std::wstring& root) {
+        std::wstring data = util::joinPath(root, L"templates-data");
+        const std::wstring project = util::joinPath(root, L"templates-project");
+        util::ensureDir(data);
+        util::ensureDir(project);
+        SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+        std::vector<Json> sent;
+        App app([&](const std::string& s) { sent.push_back(Json::parse(s)); });
+        app.uiReady_ = true;
+        Conversation* c = nullptr;
+        for (auto& p : app.convs_)
+            if (p->kind == "group") c = p.get();
+        c->cwd = project;
+        auto last = [&](const char* reqId) {
+            for (auto it = sent.rbegin(); it != sent.rend(); ++it)
+                if ((*it)["type"].str() == "pipelines.result" && (*it)["reqId"].str() == reqId) return *it;
+            return Json();
+        };
+        Json nodes =
+            Json(Json::Array{J({{"id", "author"}, {"name", "Claude"}, {"backend", "claude"}, {"role", "write"}}),
+                             J({{"id", "reviewer"}, {"name", "GPT"}, {"backend", "codex"}, {"role", "review"}})});
+        Json pipeline = J({{"nodes", nodes}, {"maxCycles", 2}, {"requireTests", true}, {"routing", "full"}});
+        app.onUiMessage(J({{"type", "pipelines.save"},
+                           {"id", c->id},
+                           {"reqId", "t1"},
+                           {"file", "bugfix"},
+                           {"name", "修 bug"},
+                           {"pipeline", pipeline}})
+                            .dump());
+        const std::wstring file =
+            util::joinPath(util::joinPath(util::joinPath(project, L".cca"), L"pipelines"), L"bugfix.json");
+        std::string text;
+        check(last("t1")["ok"].boolean() && util::readFile(file, text) &&
+                  Json::parse(text)["pipeline"]["nodes"].size() == 2,
+              "a valid pipeline is saved as a project template");
+        app.onUiMessage(J({{"type", "pipelines.save"},
+                           {"id", c->id},
+                           {"reqId", "t2"},
+                           {"file", "..\\escape"},
+                           {"pipeline", pipeline}})
+                            .dump());
+        check(!last("t2")["ok"].boolean(), "a template file name cannot leave the templates folder");
+        Json broken = pipeline;
+        broken["nodes"] = Json::array();
+        app.onUiMessage(
+            J({{"type", "pipelines.save"}, {"id", c->id}, {"reqId", "t3"}, {"file", "empty"}, {"pipeline", broken}})
+                .dump());
+        check(!last("t3")["ok"].boolean(), "an invalid pipeline is not saved");
+        util::writeFileAtomic(
+            util::joinPath(util::joinPath(util::joinPath(project, L".cca"), L"pipelines"), L"bad.json"),
+            "{\"pipeline\": {\"nodes\": []}}");
+        app.onUiMessage(J({{"type", "pipelines.list"}, {"id", c->id}, {"reqId", "t4"}}).dump());
+        Json list = last("t4");
+        bool good = false, flagged = false;
+        for (const auto& item : list["items"].items()) {
+            good |= item["file"].str() == "bugfix.json" && item["pipeline"]["nodes"].size() == 2;
+            flagged |= item["file"].str() == "bad.json" && !item["error"].str().empty() && item["pipeline"].isNull();
+        }
+        check(good && flagged, "templates are listed and an invalid one is marked instead of offered");
+        app.shutdown();
+        pump();
+    }
+
+    // The rules editor reads the project's files, suggests lines from this project's send-backs and never
+    // overwrites a version the user did not open.
+    static void projectRules(const std::wstring& root) {
+        std::wstring data = util::joinPath(root, L"rules-data");
+        const std::wstring project = util::joinPath(root, L"rules-project");
+        util::ensureDir(data);
+        util::ensureDir(project);
+        SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+        util::writeFileAtomic(util::joinPath(project, L"AGENTS.md"), "# rules\n");
+        std::vector<Json> sent;
+        App app([&](const std::string& s) { sent.push_back(Json::parse(s)); });
+        app.uiReady_ = true;
+        Conversation* c = app.find("dm-claude");
+        c->cwd = project;
+        c->messages.push_back(J({{"author", "system"},
+                                 {"kind", "guard"},
+                                 {"issues", Json(Json::Array{J({{"code", "no-evidence"}, {"text", "x"}})})}}));
+        auto last = [&](const char* reqId) {
+            for (auto it = sent.rbegin(); it != sent.rend(); ++it)
+                if ((*it)["type"].str() == "rules.result" && (*it)["reqId"].str() == reqId) return *it;
+            return Json();
+        };
+        app.onUiMessage(J({{"type", "rules.get"}, {"id", c->id}, {"reqId", "g1"}}).dump());
+        Json got = last("g1");
+        check(got["ok"].boolean() && got["files"].size() == 2 && got["files"].at(0)["text"].str() == "# rules\n" &&
+                  !got["files"].at(1)["exists"].boolean(),
+              "the editor reads AGENTS.md and offers a new CLAUDE.md");
+        check(got["suggestions"].dump().find("讀檔、搜尋或執行測試") != std::string::npos,
+              "a frequent send-back becomes a suggested rule line");
+        app.onUiMessage(J({{"type", "rules.save"},
+                           {"id", c->id},
+                           {"reqId", "s1"},
+                           {"name", "AGENTS.md"},
+                           {"text", "# rules\n- new line\n"},
+                           {"base", "# rules\n"}})
+                            .dump());
+        std::string text;
+        util::readFile(util::joinPath(project, L"AGENTS.md"), text);
+        check(last("s1")["ok"].boolean() && text == "# rules\n- new line\n", "a save over the opened version lands");
+        app.onUiMessage(J({{"type", "rules.save"},
+                           {"id", c->id},
+                           {"reqId", "s2"},
+                           {"name", "AGENTS.md"},
+                           {"text", "stale"},
+                           {"base", "# rules\n"}})
+                            .dump());
+        util::readFile(util::joinPath(project, L"AGENTS.md"), text);
+        check(!last("s2")["ok"].boolean() && text == "# rules\n- new line\n", "a stale save is refused, not merged");
+        app.onUiMessage(J({{"type", "rules.save"},
+                           {"id", c->id},
+                           {"reqId", "s3"},
+                           {"name", "..\\evil.md"},
+                           {"text", "x"},
+                           {"base", ""}})
+                            .dump());
+        check(!last("s3")["ok"].boolean() && !util::fileExists(util::joinPath(root, L"evil.md")),
+              "only AGENTS.md and CLAUDE.md can be written");
+        app.shutdown();
+        pump();
+    }
+
+    // The task budget stops the next member's turn, and "continue" grants another allowance of the same size.
+    static void taskLimit(const std::wstring& root) {
+        std::wstring data = util::joinPath(root, L"limit-data");
+        util::ensureDir(data);
+        SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+        App app([](const std::string&) {});
+        Conversation* c = nullptr;
+        for (auto& p : app.convs_)
+            if (p->kind == "group") c = p.get();
+        app.applySettings(*c, J({{"limitTokens", 1000}, {"limitMinutes", 0}}));
+        check(c->limitTokens == 1000, "the token limit is saved");
+        c->cwd = root;
+        c->task = newTask(c->id, "budget fixture", util::nowMs());
+        c->group.active = true;
+        c->task["usage_tokens"] = 1500;
+        std::string error;
+        check(!app.sendToAgent(*c, AgentKind::Codex, "next step", &error) && error.find("上限") != std::string::npos,
+              "a task over its token budget does not start another turn");
+        check(c->task["limit_hit"].boolean(), "the budget stop is recorded on the task");
+        c->group.active = false;
+        app.groupContinue(*c);
+        check(app.taskLimitProblem(*c).empty() && c->task["limit_ack_tokens"].i64() == 1500,
+              "continue grants another allowance from the current use");
+        c->task["usage_tokens"] = 2600;
+        check(!app.taskLimitProblem(*c).empty(), "the next allowance runs out the same way");
+        app.applySettings(*c, J({{"limitTokens", 0}, {"limitMinutes", 1}}));
+        c->task["limit_ack_at"] = util::nowMs() - 2 * 60000;
+        check(app.taskLimitProblem(*c).find("分鐘") != std::string::npos, "the time limit stops a long task too");
+        app.applySettings(*c, J({{"limitTokens", 0}, {"limitMinutes", 0}}));
+        check(app.taskLimitProblem(*c).empty(), "no limit means no stop");
+        app.shutdown();
+        pump();
+    }
+
+    // A group request waits while the project has uncommitted work of its own, and starts on request.
+    static void dirtyCheck(const std::wstring& root, const std::wstring& exe) {
+        const std::wstring project = util::joinPath(root, L"dirty-project");
+        util::ensureDir(project);
+        ProcessOptions g;
+        g.exe = util::findOnPath(L"git");
+        g.cwd = project;
+        std::string out, err;
+        auto git = [&](std::vector<std::wstring> args) {
+            g.args = std::move(args);
+            return runWait(g, &out, &err, 30000);
+        };
+        if (g.exe.empty()) {
+            std::printf("  git not found: dirty check not verified\n");
+            return;
+        }
+        git({L"init", L"-q"});
+        util::writeFileAtomic(util::joinPath(project, L"committed.txt"), "base\n");
+        git({L"add", L"committed.txt"});
+        git({L"-c", L"user.name=t", L"-c", L"user.email=t@t", L"commit", L"-qm", L"base"});
+        util::writeFileAtomic(util::joinPath(project, L"mine.txt"), "the user's unfinished work\n");
+        std::wstring data = util::joinPath(root, L"dirty-data");
+        util::ensureDir(data);
+        SetEnvironmentVariableW(L"CCA_DATA_DIR", data.c_str());
+        SetEnvironmentVariableW(L"CCA_TEST_FAILURE", L"");
+        SetEnvironmentVariableW(L"CCA_TEST_WRITE", L"0");
+        App app([](const std::string&) {});
+        app.claudeStatus_.state = app.codexStatus_.state = "ok";
+        app.claudeStatus_.exe = app.codexStatus_.exe = exe;
+        app.settings_["claudePath"] = util::narrow(exe);
+        app.settings_["codexPath"] = util::narrow(exe);
+        app.settings_["guard"]["enabled"] = false;
+        Conversation* c = nullptr;
+        for (auto& p : app.convs_)
+            if (p->kind == "group") c = p.get();
+        c->cwd = project;
+        auto settle = [&] {
+            for (int i = 0; i < 1500; ++i) {
+                pump();
+                if (!app.anyBusy(*c) && (!c->group.active || c->group.paused)) break;
+                Sleep(10);
+            }
+        };
+        app.onUiMessage(
+            J({{"type", "conv.send"}, {"id", c->id}, {"text", "ORIGINAL_TASK: wait for my changes"}}).dump());
+        settle();
+        const Json* held = nullptr;
+        for (const auto& m : c->messages)
+            if (m["kind"].str() == "dirty") held = &m;
+        check(held && (*held)["files"].dump().find("mine.txt") != std::string::npos && !c->group.active &&
+                  c->pendingStart.find("wait for my changes") != std::string::npos,
+              "uncommitted work holds the group request and names the files");
+        check(gitWorkingChanges(project)["files"].dump().find("mine.txt") != std::string::npos,
+              "the status helper lists untracked work");
+        // A project folder inside a repository only answers for its own subtree.
+        const std::wstring nested = util::joinPath(project, L"nested");
+        util::ensureDir(nested);
+        check(gitWorkingChanges(nested)["ok"].boolean() && gitWorkingChanges(nested)["files"].empty(),
+              "changes outside the project folder do not hold its requests");
+        app.onUiMessage(J({{"type", "group.startAnyway"}, {"id", c->id}}).dump());
+        settle();
+        bool started = false;
+        for (const auto& m : c->messages) started |= m["author"].str() == "user";
+        check(started && c->pendingStart.empty(), "start anyway runs the held request");
+        app.settings_["dirtyCheck"] = false;
+        const size_t before = c->messages.size();
+        app.onUiMessage(J({{"type", "conv.send"}, {"id", c->id}, {"text", "ORIGINAL_TASK: no check"}}).dump());
+        settle();
+        bool heldAgain = false;
+        for (size_t i = before; i < c->messages.size(); ++i) heldAgain |= c->messages[i]["kind"].str() == "dirty";
+        check(!heldAgain, "with the check off a group request starts directly");
+        app.shutdown();
+        pump();
     }
 
     // Gemini as a normal member: a DM, a three-member group, and every member running out of quota.
@@ -386,6 +792,12 @@ struct TakeoverTestAccess {
     static void run(const std::wstring& root, const std::wstring& exe) {
         geminiMember(root, exe);
         cursorMember(root, exe);
+        dirtyCheck(root, exe);
+        taskLimit(root);
+        projectRules(root);
+        pipelineTemplates(root);
+        taskShipping(root, exe);
+        schedulesAndQueue(root, exe);
         {
             SetEnvironmentVariableW(L"CCA_DATA_DIR", util::joinPath(root, L"opinion-protocol").c_str());
             SetEnvironmentVariableW(L"CCA_TEST_OPINION", L"1");

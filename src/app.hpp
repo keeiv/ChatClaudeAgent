@@ -73,6 +73,12 @@ struct Conversation {
     bool geminiMember = false;  // groups: Gemini joins the review rotation after Claude and GPT
     bool cursorMember = false;  // groups: Cursor joins the review rotation after Gemini
     bool extraReviewers() const { return geminiMember || cursorMember; }
+    std::vector<std::string> protectedPaths;  // patterns an agent may not change on its own (protect.cpp)
+    bool protecting = false;                  // runtime: the host is checking the last turn against them
+    std::string pendingStart;                 // a group request held while the user decides about their own changes
+    long long limitTokens = 0;                // groups: pause a task after this many tokens (0: no limit)
+    int limitMinutes = 0;                     // groups: pause a task after this many minutes (0: no limit)
+    bool checkingChanges = false;             // runtime: git status runs before that request starts
     Json adaptive =
         J({{"claude", J({{"model", true}, {"effort", true}})}, {"codex", J({{"model", true}, {"effort", true}})}});
     Json routes = Json::object();
@@ -141,6 +147,19 @@ struct AgentStatus {
 // project folder (local.cpp). Empty when the folder has neither.
 std::string projectReviewRules(const std::wstring& cwd);
 
+// Protected paths (protect.cpp): a cleaned project-relative pattern, or empty when it is refused; and whether a
+// changed file falls under it. `*` stays in one folder, `**` crosses folders, "dir/" covers everything below.
+std::string sanitizeProtectedPattern(const std::string& raw);
+// "@path" mentions (mentions.cpp): project files matching a query for the picker (worker thread), and the note
+// listing mentioned paths that exist inside the project, appended to what agents receive.
+Json searchProjectFiles(const std::wstring& cwd, const std::string& query, size_t limit);
+std::string mentionNote(const std::wstring& cwd, const std::string& text);
+// `git status` of the folder's repository (gitpanel.cpp, worker thread): {ok, files:[path]}; ok false outside Git.
+Json gitWorkingChanges(const std::wstring& cwd);
+// A schedule entry cleaned for settings.json, or null when it is incomplete (schedule.cpp).
+Json sanitizeSchedule(const Json& in);
+bool protectedMatch(const std::string& pattern, const std::string& path);
+
 // Pictures (screenshots, image artifacts) live as plain file names in App::mediaDir() (profile.cpp).
 bool isMediaName(const std::string& name);
 void removeMediaFile(const std::string& file);
@@ -164,6 +183,8 @@ public:
 
     // Host hooks (Win32 side).
     std::function<void(const std::string& action)> windowAction;  // min | max | close | drag | flash
+    // Desktop: a Windows notification while CCA is in the background (click opens convId). CLI: the terminal bell.
+    std::function<void(const std::string& title, const std::string& body, const std::string& convId)> notifier;
     std::function<std::wstring(const std::wstring& initial)> pickFolder;
     std::function<void(const std::wstring& target)> openExternal;
     // Desktop only: opens the Haiku phone simulator for an APK. Empty in the CLI.
@@ -190,6 +211,11 @@ private:
     // ---- version-control pane (gitpanel.cpp)
     friend struct GitTestAccess;
     bool handleGit(const Json& message);
+    bool handleRules(const Json& message);  // rules.get / rules.save: the project's AGENTS.md and CLAUDE.md
+    // git.branch / git.pr / git.checks for a group task: its own branch, a PR from the task record, CI results.
+    void shipTask(Conversation& c, const Json& m);
+    // worktree.resolve: merges the target into the task branch inside the worktree and hands conflicts to the AI.
+    void resolveWorktree(Conversation& c);
     // checkAuth asks the remote whether a sign-in is needed (a network call); otherwise the cached answer is sent.
     void gitRefresh(Conversation& c, const std::string& op = "", const Json& result = Json(), bool checkAuth = false);
     // Records whether a fetch, pull or push reached the remote; a sign-in failure re-checks for the sign-in page.
@@ -205,6 +231,12 @@ private:
     long long quotaResetAt(AgentKind k) const;  // ms when this agent's quota returns; 0 when unknown
     long long autoResumeAt(const Conversation& c) const;
     void tickAutoResume(long long now);
+    // schedule.cpp: the user's requests sent at chosen times, and worktree tasks merged back one at a time.
+    void tickSchedules(long long now);
+    void tickMergeQueue(long long now);
+    bool handleSchedules(const Json& message);
+    bool mergeRunning_ = false;
+    long long lastMergeTick_ = 0;
     long long autoResumeCheckAt_ = 0;
     bool handleUpdate(const Json& message);
     bool updateIdle() const;
@@ -412,6 +444,15 @@ private:
     void groupQuotaStop(Conversation& c, const std::string& detail);
     GeminiSession& geminiFor(Conversation& c);
     CursorSession& cursorFor(Conversation& c);
+    // Starts a group request, first holding it when the project has uncommitted changes the task did not make.
+    void startGroupChecked(Conversation& c, const std::string& text);
+    void searchFiles(const Json& m);  // files.search → files.found, for the composer's @ picker
+    // The group's task budget: empty when the next turn may start, otherwise why it waits (see groupContinue).
+    std::string taskLimitProblem(Conversation& c);
+    // Something the user should come back for: approvals, pauses, finished work (settings: notifications.enabled).
+    void notify(const Conversation& c, const std::string& title, const std::string& body);
+    // Starts the host-side protected-path check for a finished turn; true when TurnDone is re-sent after it.
+    bool protectTurn(Conversation& c, AgentKind k, const AgentEvent& done);
 
     // ---- plugins and MCP servers (plugins.cpp)
     void listPlugins(const std::string& agent, bool refresh);

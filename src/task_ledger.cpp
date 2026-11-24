@@ -167,6 +167,9 @@ Json taskView(const Json& task) {
                      {"ts", h["ts"]}}));
     }
     return J({{"task_id", task["task_id"]},
+              {"branch", task["branch"]},
+              {"request", util::truncateUtf8(task["request"].str(), 300)},
+              {"pr", task["pr"]},
               {"status", task["status"]},
               {"quotaStop", task["quota_stop"]},
               {"skipped", task["skipped"]},

@@ -28,6 +28,7 @@ namespace {
 const wchar_t* kWindowClass = L"CCA.Main";
 const wchar_t* kOrigin = L"https://cca.app/";
 const UINT WM_APP_RUN = WM_APP + 1;
+const UINT WM_APP_TRAY = WM_APP + 2;  // notification icon events (NOTIFYICON_VERSION_4)
 const UINT_PTR kTickTimer = 1;
 const COLORREF kTitleColor = RGB(0x1E, 0x1F, 0x22);
 
@@ -67,6 +68,45 @@ void drainQueue() {
 
 void sendToPage(const std::string& json) {
     if (g_webview) g_webview->PostWebMessageAsJson(util::widen(json).c_str());
+}
+
+// System notifications: a tray icon exists only while a notification is showing, then goes away again.
+std::string g_notifyConv;
+bool g_trayShown = false;
+
+void removeNotificationIcon() {
+    if (!g_trayShown) return;
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof nid;
+    nid.hWnd = g_hwnd;
+    nid.uID = 1;
+    Shell_NotifyIconW(NIM_DELETE, &nid);
+    g_trayShown = false;
+}
+
+void showNotification(const std::string& title, const std::string& body, const std::string& convId) {
+    // Nothing to announce while the user is looking at CCA.
+    if (!g_hwnd || GetForegroundWindow() == g_hwnd) return;
+    NOTIFYICONDATAW nid{};
+    nid.cbSize = sizeof nid;
+    nid.hWnd = g_hwnd;
+    nid.uID = 1;
+    nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_INFO;
+    nid.uCallbackMessage = WM_APP_TRAY;
+    nid.hIcon = (HICON)LoadImageW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101), IMAGE_ICON,
+                                  GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
+    wcsncpy_s(nid.szTip, L"ChatClaudeAgent", _TRUNCATE);
+    wcsncpy_s(nid.szInfoTitle, util::widen(title).c_str(), _TRUNCATE);
+    wcsncpy_s(nid.szInfo, util::widen(body.empty() ? title : body).c_str(), _TRUNCATE);
+    nid.dwInfoFlags = NIIF_INFO;
+    g_notifyConv = convId;
+    if (g_trayShown) {
+        Shell_NotifyIconW(NIM_MODIFY, &nid);
+        return;
+    }
+    g_trayShown = Shell_NotifyIconW(NIM_ADD, &nid) != FALSE;
+    nid.uVersion = NOTIFYICON_VERSION_4;
+    if (g_trayShown) Shell_NotifyIconW(NIM_SETVERSION, &nid);
 }
 
 void notifyWindowState() {
@@ -443,6 +483,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_APP_RUN:
         drainQueue();
         return 0;
+    case WM_APP_TRAY:
+        if (LOWORD(lp) == NIN_BALLOONUSERCLICK || LOWORD(lp) == WM_LBUTTONUP) {
+            if (IsIconic(hwnd)) ShowWindow(hwnd, SW_RESTORE);
+            SetForegroundWindow(hwnd);
+            if (!g_notifyConv.empty()) sendToPage(J({{"type", "focusConv"}, {"id", g_notifyConv}}).dump());
+            removeNotificationIcon();
+        } else if (LOWORD(lp) == NIN_BALLOONTIMEOUT || LOWORD(lp) == NIN_BALLOONHIDE) {
+            removeNotificationIcon();
+        }
+        return 0;
     case WM_TIMER:
         if (wp == kTickTimer && g_app) g_app->tick();
         return 0;
@@ -451,6 +501,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY:
+        removeNotificationIcon();
         KillTimer(hwnd, kTickTimer);
         if (g_app) g_app->shutdown();
         PostQuitMessage(0);
@@ -526,6 +577,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     g_app = std::make_unique<App>(sendToPage);
     g_app->windowAction = windowAction;
+    g_app->notifier = showNotification;
     g_app->pickFolder = pickFolder;
     g_app->openExternal = [](const std::wstring& target) {
         ShellExecuteW(nullptr, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);

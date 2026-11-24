@@ -479,6 +479,7 @@ void App::groupPause(Conversation& c, const std::string& reason, AgentKind next,
     g.paused = true;
     g.pauseReason = reason;
     g.pauseKind = kind;
+    notify(c, "協作暫停", reason);
     g.pendingAgent = agentName(next);
     g.pendingPrompt = prompt;
     g.pendingPhase = phase;
@@ -501,6 +502,13 @@ void App::groupPause(Conversation& c, const std::string& reason, AgentKind next,
 
 void App::groupContinue(Conversation& c) {
     GroupRun& g = c.group;
+    if (c.task.isObject() && c.task["limit_hit"].boolean()) {
+        // Continuing past the task budget starts a new allowance of the same size from here.
+        c.task["limit_hit"] = false;
+        c.task["limit_ack_tokens"] = c.task["usage_tokens"].i64();
+        c.task["limit_ack_at"] = util::nowMs();
+        saveTask(c.task);
+    }
     if (g.pipeline && g.active && g.paused) {
         if (c.task["conflict"].boolean()) {
             c.task["head_revision"] = c.task["conflict_head"];
@@ -635,6 +643,12 @@ void App::groupStop(Conversation& c) {
 
 void App::groupFinish(Conversation& c, const std::string& outcome, const std::string& detail) {
     c.workflow.outcome = outcome;
+    if (outcome != "stopped")
+        notify(c,
+               outcome == "consensus" || outcome == "completed" ? "協作完成"
+               : outcome == "quota"                             ? "額度用完，已停止"
+                                                                : "協作結束",
+               detail);
     if (c.task.isObject()) {
         Json previous = c.task;
         // A quota stop keeps its recorded next step, so the task stays resumable once quota returns.

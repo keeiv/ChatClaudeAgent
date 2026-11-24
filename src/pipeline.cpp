@@ -434,6 +434,7 @@ void App::invalidatePipelineTask(Conversation& c, const std::string& revision, c
 }
 
 void App::pipelineBlock(Conversation& c, const std::string& reason) {
+    notify(c, "多代理流程暫停", reason);
     c.group.paused = true;
     c.group.pauseReason = reason;
     c.task["status"] = "paused";

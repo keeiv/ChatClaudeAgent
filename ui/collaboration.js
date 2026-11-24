@@ -133,7 +133,7 @@ window.CCACollaboration = (() => {
     let fingerprint = '';
     const draw = () => {
       const w = data(c).workspace || {}, running = busy(c);
-      const next = JSON.stringify([w, running]); if (next === fingerprint) return; fingerprint = next;
+      const next = JSON.stringify([w, running, data(c).mergeQueued]); if (next === fingerprint) return; fingerprint = next;
       const check = w.check;
       api.put(body, h('p', {}, '每個協作群組可使用自己的 worktree 與分支，同一項任務的代理在該工作區交接，其他任務可平行執行。'),
         h('p', { class: 'hint' }, '建立時從已提交的 HEAD 開始。來源有未提交變更時會阻擋；合併也只接受兩邊都已提交的內容，不會自動暫存檔案。'),
@@ -141,9 +141,14 @@ window.CCACollaboration = (() => {
           w[key] ? [h('dt', {}, ['來源倉庫', '隔離工作區', '任務分支', '合併目標'][i]), h('dd', { class: 'mono' }, w[key])] : [])),
         check ? h('div', { class: 'card' }, h('div', { class: 'card-title' }, check.merged ? '已合併' : check.clean ? '可無衝突合併' : '存在衝突'),
           h('pre', { class: 'task-record' }, check.summary || '沒有新的已提交差異'),
-          check.conflicts ? h('pre', { class: 'task-record warn-text' }, check.conflicts) : null) : null);
+          check.conflicts ? h('pre', { class: 'task-record warn-text' }, check.conflicts) : null,
+          check.conflicts && !check.merged ? h('div', { class: 'collab-actions' },
+            h('p', { class: 'hint' }, 'CCA 會在隔離工作區把合併目標併進任務分支，把有衝突的檔案交給 AI 解開並提交；你的專案資料夾不受影響，之後再檢查並合併。'),
+            button('請 AI 在 worktree 解衝突', () => command(c, 'worktree.resolve'), 'primary', running)) : null) : null);
       api.put(footer, w.ok ? button('檢查能否合併', () => command(c, 'worktree.check'), 'secondary', running) :
         button('建立隔離 worktree', () => command(c, 'worktree.create'), 'primary', running),
+      w.ok ? button(data(c).mergeQueued ? '移出合併佇列' : '加入合併佇列', () => api.send({ type: 'worktree.queue', id: c.id, enabled: !data(c).mergeQueued }),
+        'secondary', running) : null,
       w.ok ? button('合併已提交變更', () => api.modal({ title: '合併任務變更',
         desc: '目標：' + w.origin + ' · ' + w.targetBranch, body: h('pre', { class: 'task-record' }, check.summary || '沒有變更'),
         foot: close => [button('取消', close, 'ghost'), button('確認合併', () => {
