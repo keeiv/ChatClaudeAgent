@@ -11,17 +11,26 @@
 void postToUi(std::function<void()> fn);
 
 // Local1/Local2 are the two optional Ollama models; they only ever review read-only.
-enum class AgentKind { Claude, Codex, Local1, Local2, Gemini };
+// The order is also the index of the per-agent slots in Conversation (activeMsg, thinking, guardTry).
+enum class AgentKind { Claude, Codex, Local1, Local2, Gemini, Cursor };
 
 inline const char* agentName(AgentKind k) {
     switch (k) {
     case AgentKind::Claude: return "claude";
     case AgentKind::Codex: return "codex";
     case AgentKind::Local1: return "local1";
+    case AgentKind::Local2:
+        return "local2";
     case AgentKind::Gemini:
         return "gemini";
-    default: return "local2";
+    case AgentKind::Cursor:
+        return "cursor";
     }
+    return "local2";
+}
+// Gemini and Cursor run as one headless CLI process per turn, with no model routing or Docker sandbox from CCA.
+inline bool isHeadlessCli(AgentKind k) {
+    return k == AgentKind::Gemini || k == AgentKind::Cursor;
 }
 inline bool isLocal(AgentKind k) { return k == AgentKind::Local1 || k == AgentKind::Local2; }
 

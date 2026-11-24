@@ -96,6 +96,8 @@ void App::shutdown() {
     for (auto& c : convs_) {
         if (c->worker) c->worker->shutdown();
         for (auto& session : c->pipelineGemini) session.second->shutdown();
+        for (auto& session : c->pipelineCursor) session.second->shutdown();
+        if (c->cursor) c->cursor->shutdown();
         stopOpinion(*c);
         for (auto& session : c->pipelineClaude) session.second->shutdown();
         for (auto& session : c->pipelineCodex) session.second->shutdown();
@@ -136,7 +138,8 @@ void App::load() {
         auto c = std::make_unique<Conversation>();
         c->id = m["id"].str();
         c->kind = m["kind"].str();
-        if (c->id.empty() || (c->kind != "claude" && c->kind != "codex" && c->kind != "gemini" && c->kind != "group"))
+        if (c->id.empty() || (c->kind != "claude" && c->kind != "codex" && c->kind != "gemini" && c->kind != "cursor" &&
+                              c->kind != "group"))
             continue;
         c->collaboration = loadCollaboration(c->id);
         c->name = m["name"].str();
@@ -158,6 +161,9 @@ void App::load() {
         c->codexThread = m["codexThread"].str();
         c->geminiSession = m["geminiSession"].str();
         c->geminiMember = c->kind == "group" && m["geminiMember"].boolean();
+        c->cursorSession = m["cursorSession"].str();
+        c->cursorModel = m["cursorModel"].str();
+        c->cursorMember = c->kind == "group" && m["cursorMember"].boolean();
         c->lead = m["lead"].str() == "codex" ? "codex" : "claude";
         c->autoFallback = m["autoFallback"].boolean(true);
         c->contextPending = c->lead == "codex";
@@ -220,6 +226,9 @@ bool App::saveConversations(const std::string& omit) {
                      {"codexThread", c->codexThread},
                      {"geminiSession", c->geminiSession},
                      {"geminiMember", c->geminiMember},
+                     {"cursorSession", c->cursorSession},
+                     {"cursorModel", c->cursorModel},
+                     {"cursorMember", c->cursorMember},
                      {"maxRounds", c->maxRounds},
                      {"regressionGuard", c->regressionGuard},
                      {"testCommand", c->testCommand},
@@ -275,6 +284,7 @@ void App::ensureDefaults() {
     if (!has("claude")) add("dm-claude", "claude", "Claude");
     if (!has("codex")) add("dm-codex", "codex", "GPT");
     if (!has("gemini")) add("dm-gemini", "gemini", "Gemini");
+    if (!has("cursor")) add("dm-cursor", "cursor", "Cursor");
     // Deleting the final group must leave an empty rail, rather than silently creating another one.
     if (firstRun && !has("group")) add(util::newId(), "group", "協作群組");
     if (metaDirty_) saveMeta();
@@ -337,6 +347,7 @@ Json App::convMeta(const Conversation& c) const {
                 {"claudeEffort", c.claudeEffort},
                 {"codexModel", c.codexModel},
                 {"codexEffort", c.codexEffort},
+                {"cursorModel", c.cursorModel},
                 {"maxRounds", c.maxRounds},
                 {"regressionGuard", c.regressionGuard},
                 {"testCommand", c.testCommand},
@@ -346,8 +357,10 @@ Json App::convMeta(const Conversation& c) const {
                 {"claudeLimited", claudeLimited()},
                 {"exhausted", J({{"claude", agentExhausted(AgentKind::Claude)},
                                  {"codex", agentExhausted(AgentKind::Codex)},
-                                 {"gemini", agentExhausted(AgentKind::Gemini)}})},
+                                 {"gemini", agentExhausted(AgentKind::Gemini)},
+                                 {"cursor", agentExhausted(AgentKind::Cursor)}})},
                 {"geminiMember", c.geminiMember},
+                {"cursorMember", c.cursorMember},
                 {"daily", c.daily},
                 {"localMembers",
                  [&] {
@@ -374,6 +387,7 @@ Json App::convState(const Conversation& c) const {
     const auto participant = c.group.pipeline ? pipelineNode(c)["backend"].str("codex") : "codex";
     if (c.worker && c.worker->busy()) typing.push(participant);
     if (c.gemini && c.gemini->busy()) typing.push("gemini");
+    if (c.cursor && c.cursor->busy()) typing.push("cursor");
     if (c.claude && c.claude->busy()) typing.push("claude");
     if (c.codex && c.codex->busy()) typing.push("codex");
     if (c.local[0] && c.local[0]->busy()) typing.push("local1");
@@ -395,7 +409,8 @@ Json App::convState(const Conversation& c) const {
                                     {"codex", c.thinking[1]},
                                     {"local1", c.thinking[2]},
                                     {"local2", c.thinking[3]},
-                                    {"gemini", c.thinking[4]}})},
+                                    {"gemini", c.thinking[4]},
+                                    {"cursor", c.thinking[5]}})},
                     {"preparing", c.preparing},
                     {"group", J({{"active", c.group.active},
                                  {"phase", c.group.phase},
@@ -416,22 +431,25 @@ Json App::convState(const Conversation& c) const {
     state["collaboration"] = c.collaboration;
     Json members = Json::array();
     for (const auto& id : c.localMembers) members.push(id);
-    for (const auto& node : c.pipeline["nodes"].items())
-        if (node["backend"].str() == "gemini") {
-            members.push("gemini");
-            break;
-        }
+    // Headless CLI members appear in the diagram when invited to the group or named by a pipeline node.
+    for (const char* cli : {"gemini", "cursor"}) {
+        bool in = std::string(cli) == "gemini" ? c.geminiMember : c.cursorMember;
+        for (const auto& node : c.pipeline["nodes"].items()) in |= node["backend"].str() == cli;
+        if (in) members.push(cli);
+    }
     state["workflow"] = workflowView(J({{"kind", c.kind},
                                         {"lead", c.lead},
                                         {"pipeline", c.pipeline},
                                         {"names", J({{"claude", nameOf(AgentKind::Claude)},
                                                      {"codex", nameOf(AgentKind::Codex)},
                                                      {"gemini", nameOf(AgentKind::Gemini)},
+                                                     {"cursor", nameOf(AgentKind::Cursor)},
                                                      {"local1", nameOf(AgentKind::Local1)},
                                                      {"local2", nameOf(AgentKind::Local2)}})},
                                         {"members", members},
                                         {"models", J({{"claude", c.claudeModel},
                                                       {"codex", c.codexModel},
+                                                      {"cursor", c.cursorModel},
                                                       {"local1", localModel(AgentKind::Local1)},
                                                       {"local2", localModel(AgentKind::Local2)}})}}),
                                      state, c.workflow, c.messages);
@@ -459,7 +477,7 @@ void App::sendBoot() {
             {"groupOrder", groupOrder()},
             {"states", states},
             {"settings", settings_},
-            {"models", J({{"claude", claudeModels_}, {"codex", codexModels_}})},
+            {"models", J({{"claude", claudeModels_}, {"codex", codexModels_}, {"cursor", cursorModels_}})},
             {"usage", usage_}}));
     sendAuth();
 }
@@ -469,7 +487,8 @@ void App::sendUsage() {
 }
 
 void App::sendModels() {
-    send(J({{"type", "models"}, {"models", J({{"claude", claudeModels_}, {"codex", codexModels_}})}}));
+    send(J({{"type", "models"},
+            {"models", J({{"claude", claudeModels_}, {"codex", codexModels_}, {"cursor", cursorModels_}})}}));
 }
 
 void App::tick() {
@@ -593,6 +612,12 @@ AgentConfig App::configFor(const Conversation& c, AgentKind k, bool routed) cons
         cfg.effort.clear();
         cfg.resumeId = c.geminiSession;
     }
+    if (k == AgentKind::Cursor) {
+        // Cursor encodes the reasoning level in the model id it lists, so there is no separate effort.
+        cfg.model = c.cursorModel;
+        cfg.effort.clear();
+        cfg.resumeId = c.cursorSession;
+    }
     std::string instr;
     auto add = [&](const std::string& part) {
         if (part.empty()) return;
@@ -608,13 +633,15 @@ AgentConfig App::configFor(const Conversation& c, AgentKind k, bool routed) cons
     if (c.daily && c.kind != "group") {
         // Cheapest model, nothing edited without asking, and no project folder needed.
         cfg.permission = "ask";
-        cfg.model = k == AgentKind::Gemini ? "" : dailyModel(k);
-        cfg.effort = k == AgentKind::Gemini ? "" : dailyEffort(k);
+        if (!isHeadlessCli(k)) {
+            cfg.model = dailyModel(k);
+            cfg.effort = dailyEffort(k);
+        }
         if (cfg.cwd.empty() || !util::dirExists(cfg.cwd)) cfg.cwd = dailyDir();
         add(kDailyNote);
     }
     // Both agents get the same Docker sandbox as a tool, so a failing agent-side sandbox does not stop the work.
-    if (settings_["sandboxShare"].boolean(true) && !c.daily && k != AgentKind::Gemini) {
+    if (settings_["sandboxShare"].boolean(true) && !c.daily && !isHeadlessCli(k)) {
         cfg.sandbox = findSandboxMcp();
         if (cfg.sandbox.on()) add(sandboxInstructions());
     }
@@ -648,6 +675,15 @@ GeminiSession& App::geminiFor(Conversation& c) {
             [this, id](const AgentEvent& ev) { onAgentEvent(id, AgentKind::Gemini, ev); });
     }
     return *c.gemini;
+}
+
+CursorSession& App::cursorFor(Conversation& c) {
+    if (!c.cursor) {
+        std::string id = c.id;
+        c.cursor = std::make_shared<CursorSession>(
+            [this, id](const AgentEvent& ev) { onAgentEvent(id, AgentKind::Cursor, ev); });
+    }
+    return *c.cursor;
 }
 
 void App::ensureCodexServer() {
@@ -705,6 +741,18 @@ bool App::sendToAgent(Conversation& c, AgentKind k, const std::string& text, std
     if (k == AgentKind::Gemini && transport.empty() && geminiStatus_.state != "ok") {
         if (error) *error = geminiStatus_.message.empty() ? "Gemini 尚未通過帳號檢查" : geminiStatus_.message;
         return false;
+    }
+    if (k == AgentKind::Cursor && transport.empty()) {
+        // Checked before the checkpoint so a refused start leaves no empty turn behind.
+        std::string why = cursorStatus_.state != "ok"
+                              ? (cursorStatus_.message.empty() ? "Cursor 尚未通過帳號檢查" : cursorStatus_.message)
+                          : daily ? "Cursor CLI 無介面執行時不能逐項詢問，因此不提供日常模式；請關閉日常模式。"
+                          : c.cursorModel.empty() ? "請先從 Cursor 回報的模型清單選一個模型（例如 Grok）。"
+                                                  : CursorSession::permissionProblem(c.permission, c.cwd);
+        if (!why.empty()) {
+            if (error) *error = why;
+            return false;
+        }
     }
     if (daily || c.cwd.empty() || !snapshots_.available()) {
         startAgent(c, k, text);
@@ -790,6 +838,8 @@ void App::startAgent(Conversation& c, AgentKind k, const std::string& text) {
         ok = claudeFor(c).send(input, &err);
     } else if (k == AgentKind::Gemini) {
         ok = geminiFor(c).send(resolveGeminiExe(), configFor(c, k), input, &err);
+    } else if (k == AgentKind::Cursor) {
+        ok = cursorFor(c).send(resolveCursor(), configFor(c, k), input, &err);
     } else {
         CodexThread* t = codexFor(c, &err);
         ok = t && t->send(input, &err);
@@ -812,6 +862,7 @@ void App::sendFailed(Conversation& c, AgentKind k, const std::string& error) {
 
 bool App::anyBusy(const Conversation& c) const {
     if (c.gemini && c.gemini->busy()) return true;
+    if (c.cursor && c.cursor->busy()) return true;
     if (qualityBusy_.count(c.id)) return true;
     const auto opinion = c.collaboration["opinion"]["status"].str();
     if (opinion == "running" || opinion == "summarizing") return true;
@@ -898,6 +949,11 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
             c.geminiSession = d["sessionId"].str();
             metaDirty_ = true;
         }
+        if (k == AgentKind::Cursor && !c.group.pipeline && !d["sessionId"].str().empty() &&
+            d["sessionId"].str() != c.cursorSession) {
+            c.cursorSession = d["sessionId"].str();
+            metaDirty_ = true;
+        }
         if (d.has("threadId") && !d["threadId"].str().empty() && d["threadId"].str() != c.codexThread) {
             c.codexThread = d["threadId"].str();
             metaDirty_ = true;
@@ -953,15 +1009,16 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
             msg["agent_id"] = node["id"];
             msg["agent_label"] = node["name"].str(node["id"].str());
             const auto backend = node["backend"].str();
-            if (backend == "gemini") msg["author"] = "gemini";
+            if (backend == "gemini" || backend == "cursor") msg["author"] = backend;
             const bool adaptive = backend == "claude" || backend == "codex";
             msg["routing"] = adaptive ? cfg.routing : Json::object();
             msg["model"] = adaptive ? Json(cfg.model) : node["model"];
-            if (backend == "gemini") msg["effort"] = "";
+            if (backend == "gemini" || backend == "cursor") msg["effort"] = "";
             msg["billing"] = node["backend"].str() == "api"     ? "api"
                              : node["backend"].str() == "local" ? "local"
                                                                 : "subscription";
             if (backend == "gemini") msg["billing"] = "google-account";
+            if (backend == "cursor") msg["billing"] = "cursor-account";
         }
         if (c.daily && c.kind != "group") msg["daily"] = true;
         if (!isLocal(k) && !c.pendingSnapshot.empty()) {
@@ -1143,7 +1200,9 @@ void App::onAgentEvent(const std::string& convId, AgentKind k, const AgentEvent&
             c.stateDirty = true;
             break;
         }
-        const std::string usageAgent = node["backend"].str() == "gemini" ? "gemini" : agentName(k);
+        const std::string usageAgent = node["backend"].str() == "gemini" || node["backend"].str() == "cursor"
+                                           ? node["backend"].str()
+                                           : agentName(k);
         Json& sess = usage_[usageAgent]["session"];
         sess["costUsd"] = sess["costUsd"].num() + d["costUsd"].num();
         sess["inputTokens"] = sess["inputTokens"].i64() + d["inputTokens"].i64();
@@ -1334,6 +1393,14 @@ void App::applySettings(Conversation& c, const Json& s) {
         c.adaptive["codex"]["model"] = false;
         c.routes.erase("codex");
     }
+    if (s.has("cursorModel")) {
+        // Only ids from the catalogue the CLI reported for this account; an empty value clears the pick.
+        const std::string pick = s["cursorModel"].str();
+        bool listed = pick.empty();
+        for (const auto& model : cursorModels_.items()) listed |= model["value"].str() == pick;
+        if (listed) c.cursorModel = pick;
+        else toast("error", "Cursor 沒有回報這個模型，請重新檢查帳號後再選");
+    }
     if (s.has("codexEffort")) {
         c.codexEffort = s["codexEffort"].str();
         c.adaptive["codex"]["effort"] = false;
@@ -1352,6 +1419,7 @@ void App::applySettings(Conversation& c, const Json& s) {
     if (c.testCommand.empty()) c.regressionGuard = false;
     if (s.has("daily") && c.kind != "group") c.daily = s["daily"].boolean();
     if (s.has("geminiMember") && c.kind == "group") c.geminiMember = s["geminiMember"].boolean();
+    if (s.has("cursorMember") && c.kind == "group") c.cursorMember = s["cursorMember"].boolean();
     if (s.has("localMembers") && c.kind == "group") {
         c.localMembers.clear();
         for (const auto& l : s["localMembers"].items()) {
@@ -1386,6 +1454,11 @@ void App::resetConversation(Conversation& c) {
     c.claudeSession.clear();
     c.codexThread.clear();
     c.geminiSession.clear();
+    c.cursorSession.clear();
+    if (c.cursor) {
+        c.cursor->shutdown();
+        c.cursor.reset();
+    }
     clearPipelineSessions(c);
     c.messages.clear();
     c.workflow = WorkflowRun();
@@ -1457,6 +1530,7 @@ void App::onUiMessage(const std::string& text) {
         sendBoot();
         sendExtensions();
         checkGemini();
+        checkCursor();
         if (!editionNotice_.empty()) toast("info", editionNotice_);
         editionNotice_.clear();
         if (claudeStatus_.state == "checking" || codexStatus_.state == "checking") runAuthCheck(true, true);
@@ -1464,13 +1538,18 @@ void App::onUiMessage(const std::string& text) {
     }
     if (type == "auth.check") {
         if (m["agent"].str().empty() || m["agent"].str() == "gemini") checkGemini();
-        if (m["agent"].str() == "gemini") return;
+        if (m["agent"].str().empty() || m["agent"].str() == "cursor") checkCursor();
+        if (m["agent"].str() == "gemini" || m["agent"].str() == "cursor") return;
         runAuthCheck(m["agent"].str() != "codex", m["agent"].str() != "claude");
         return;
     }
     if (type == "auth.login") {
         if (m["agent"].str() == "gemini") {
             loginGemini();
+            return;
+        }
+        if (m["agent"].str() == "cursor") {
+            loginCursor();
             return;
         }
         if (m["agent"].str() == "claude") loginClaude();
@@ -1515,7 +1594,20 @@ void App::onUiMessage(const std::string& text) {
         // so each must be empty (auto-detect) or an existing program file. Every other setting
         // has its own validated message (daily.set, humanize.set, ...).
         const Json& in = m["settings"];
-        bool claude = false, codex = false, gemini = false;
+        bool claude = false, codex = false, gemini = false, cursor = false;
+        if (in.has("cursorPath")) {
+            // An install folder, a version folder or its index.js; CCA starts the bundle with node.exe itself.
+            bool busy = cursorChecking_ || (cursorLogin_ && cursorLogin_->running());
+            for (const auto& c : convs_) busy |= c->cursor && c->cursor->busy();
+            std::string path = util::trim(in["cursorPath"].str());
+            if (busy) toast("error", "請等待 Cursor 查詢或工作結束，再變更安裝位置");
+            else if (!path.empty() && !CursorSession::resolve(util::widen(path)).ok())
+                toast("error", "這個位置找不到 Cursor CLI 的 node.exe 與 index.js：" + path);
+            else {
+                settings_["cursorPath"] = path;
+                cursor = true;
+            }
+        }
         for (const char* key : {"claudePath", "codexPath", "geminiPath"}) {
             if (!in.has(key)) continue;
             if (std::string(key) == "geminiPath") {
@@ -1537,7 +1629,7 @@ void App::onUiMessage(const std::string& text) {
             if (std::string(key) == "geminiPath") gemini = true;
             else (std::string(key) == "claudePath" ? claude : codex) = true;
         }
-        if (!claude && !codex && !gemini) return;
+        if (!claude && !codex && !gemini && !cursor) return;
         metaDirty_ = true;
         if (codex && codexServer_) {
             codexServer_->stop();
@@ -1551,6 +1643,7 @@ void App::onUiMessage(const std::string& text) {
         }
         runAuthCheck(claude, codex);
         if (gemini) checkGemini();
+        if (cursor) checkCursor();
         sendSettings();
         return;
     }
@@ -1607,7 +1700,7 @@ void App::onUiMessage(const std::string& text) {
         out["enabled"] = in["enabled"].boolean();
         out["delayMinutes"] = std::clamp<long long>(in["delayMinutes"].i64(3), 0, 1440);
         out["maxAttempts"] = std::clamp<long long>(in["maxAttempts"].i64(3), 1, 20);
-        for (const char* agent : {"claude", "codex", "gemini"})
+        for (const char* agent : {"claude", "codex", "gemini", "cursor"})
             out["fallback"][agent] = std::clamp<long long>(in["fallback"][agent].i64(60), 1, 10080);
         const auto clock = [](const std::string& t) {
             return t.size() == 5 && t[2] == ':' && isdigit((unsigned char)t[0]) && isdigit((unsigned char)t[1]) &&
@@ -1687,6 +1780,7 @@ void App::onUiMessage(const std::string& text) {
         if (c->claude) c->claude->shutdown();
         if (c->codex) c->codex->shutdown();
         if (c->gemini) c->gemini->shutdown();
+        if (c->cursor) c->cursor->shutdown();
         DeleteFileW(messagesFile(id).c_str());
         deleteTask(id);
         convs_.erase(std::remove_if(convs_.begin(), convs_.end(), [&](const auto& x) { return x->id == id; }),
@@ -1753,6 +1847,7 @@ void App::onUiMessage(const std::string& text) {
             return;
         }
         AgentKind k = c->kind == "gemini"                         ? AgentKind::Gemini
+                      : c->kind == "cursor"                       ? AgentKind::Cursor
                       : c->kind == "claude" && c->lead != "codex" ? AgentKind::Claude
                                                                   : AgentKind::Codex;
         if (anyBusy(*c)) {
@@ -1781,6 +1876,11 @@ void App::onUiMessage(const std::string& text) {
             if (c->gemini && c->gemini->busy()) {
                 c->gemini->shutdown();
                 onAgentEvent(c->id, AgentKind::Gemini,
+                             {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
+            }
+            if (c->cursor && c->cursor->busy()) {
+                c->cursor->shutdown();
+                onAgentEvent(c->id, AgentKind::Cursor,
                              {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
             }
         }

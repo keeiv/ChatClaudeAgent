@@ -11,6 +11,7 @@ namespace tui {
 
 namespace {
 uint32_t geminiColor = 0x88b6ff;
+uint32_t cursorColor = 0xc3ccd6;
 
 struct Range {
     char32_t lo, hi;
@@ -300,6 +301,7 @@ std::string modelName(const Json& m) {
 void setTheme(const std::string& id) {
     Json theme = themeById(id);
     geminiColor = theme.isNull() ? 0x88b6ff : themeColor(theme, "gemini");
+    cursorColor = theme.isNull() ? 0xc3ccd6 : themeColor(theme, "cursor");
     themeActive = !theme.isNull() && id != "cca";
     using namespace color;
     if (!themeActive) {
@@ -612,6 +614,7 @@ uint32_t agentColor(const std::string& who) {
     if (who == "claude") return color::kClaude;
     if (who == "codex") return color::kGpt;
     if (who == "gemini") return geminiColor;
+    if (who == "cursor") return cursorColor;
     if (who == "local1") return color::kLocal1;
     if (who == "local2") return color::kLocal2;
     return color::kBrand;
@@ -621,6 +624,7 @@ std::string withAgentName(const std::string& title, const Names& names) {
     if (util::startsWith(title, "Claude")) return names.of("claude") + " " + util::trim(title.substr(6));
     if (util::startsWith(title, "GPT")) return names.of("codex") + " " + util::trim(title.substr(3));
     if (util::startsWith(title, "Gemini")) return names.of("gemini") + " " + util::trim(title.substr(6));
+    if (util::startsWith(title, "Cursor")) return names.of("cursor") + " " + util::trim(title.substr(6));
     return title;
 }
 

@@ -136,13 +136,17 @@ std::wstring App::resolveCodexExe() const {
 }
 
 void App::sendAuth() {
-    bool ok = claudeStatus_.state == "ok" || codexStatus_.state == "ok" || geminiStatus_.state == "ok";
+    bool ok = claudeStatus_.state == "ok" || codexStatus_.state == "ok" || geminiStatus_.state == "ok" ||
+              cursorStatus_.state == "ok";
     Json gemini = statusJson(geminiStatus_, "gemini");
     gemini["planLabel"] = geminiStatus_.plan;
+    Json cursor = statusJson(cursorStatus_, "cursor");
+    cursor["planLabel"] = cursorStatus_.plan.empty() ? "" : "Cursor " + cursorStatus_.plan;
     send(J({{"type", "auth"},
             {"claude", statusJson(claudeStatus_, "claude")},
             {"codex", statusJson(codexStatus_, "codex")},
             {"gemini", gemini},
+            {"cursor", cursor},
             {"ok", ok}}));
 }
 

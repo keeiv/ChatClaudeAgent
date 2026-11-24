@@ -201,8 +201,8 @@ bool App::takeOver(Conversation& c, const std::string& reason, std::string* erro
                                    " 接手，已附上工作交接。"}}));
     sendConvs();
     if (c.group.active) {
-        // With Gemini in the group the rotation continues without Claude instead of collapsing to a solo run.
-        c.group.solo = (claudeLimited() || claudeStatus_.state != "ok") && !c.geminiMember;
+        // With Gemini or Cursor in the group the rotation continues without Claude instead of collapsing to a solo run.
+        c.group.solo = (claudeLimited() || claudeStatus_.state != "ok") && !c.extraReviewers();
         if (claudeLimited()) c.group.skipped.insert("claude");
         groupHandOff(c, AgentKind::Codex, prompt, "write");
         return true;
@@ -273,6 +273,7 @@ long long App::autoResumeAt(const Conversation& c) const {
             if (backend == "claude") members.push_back(AgentKind::Claude);
             else if (backend == "codex") members.push_back(AgentKind::Codex);
             else if (backend == "gemini") members.push_back(AgentKind::Gemini);
+            else if (backend == "cursor") members.push_back(AgentKind::Cursor);
         }
     } else {
         members = groupMembers(c);
@@ -281,6 +282,7 @@ long long App::autoResumeAt(const Conversation& c) const {
     for (AgentKind k : members) {
         // An account the CLI no longer serves never gets its quota back.
         if (k == AgentKind::Gemini && (geminiStatus_.state == "retired" || geminiStatus_.state == "missing")) continue;
+        if (k == AgentKind::Cursor && cursorStatus_.state == "missing") continue;
         long long at = quotaResetAt(k);
         if (!at) at = now + std::clamp<long long>(cfg["fallback"][agentName(k)].i64(60), 1, 10080) * 60000;
         if (!earliest || at < earliest) earliest = at;

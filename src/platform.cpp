@@ -98,9 +98,13 @@ bool App::handlePlatform(const Json& m) {
         if (!c->preparing.empty()) return true;
         Json node = pipelineNode(*c);
         AgentKind kind = node["backend"].str() == "claude" ? AgentKind::Claude : AgentKind::Codex;
+        // A headless CLI turn's events arrive under its own kind, so the interruption must use that slot too.
         if (c->gemini && c->gemini->busy()) {
             c->gemini->shutdown();
-            onAgentEvent(c->id, kind, {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
+            onAgentEvent(c->id, AgentKind::Gemini, {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
+        } else if (c->cursor && c->cursor->busy()) {
+            c->cursor->shutdown();
+            onAgentEvent(c->id, AgentKind::Cursor, {AgentEvent::Kind::TurnDone, "", J({{"status", "interrupted"}})});
         } else if (c->worker && c->worker->busy()) {
             c->worker->shutdown();
             if (c->activeMsg[kind == AgentKind::Claude ? 0 : 1].empty()) {

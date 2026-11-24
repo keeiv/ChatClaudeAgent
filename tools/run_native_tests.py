@@ -15,7 +15,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TARGETS = ["test", "takeover-test", "appearance-test", "desk-test", "edition-test", "profile-test", "pipeline-test",
-           "collaboration-test", "quality-test", "gemini-test", "git-test", "haiku-sim-test", "memory-test"]
+           "collaboration-test", "quality-test", "gemini-test", "cursor-test", "git-test", "haiku-sim-test", "memory-test"]
 
 
 def main():
@@ -30,10 +30,10 @@ def main():
     args = parser.parse_args()
     skip = list(args.skip)
     if args.asan:
-        # gemini-test points PATH at an empty folder and copies the tested program there as node.exe; the AddressSanitizer
-        # build cannot find its runtime DLLs from there, so the probe never starts. Its protocol code is covered by the
+        # gemini-test and cursor-test copy the tested program into another folder as node.exe; the AddressSanitizer
+        # build cannot find its runtime DLLs from there, so the probe never starts. Their protocol code is covered by the
         # other targets' sanitizer runs.
-        skip.append("gemini-test")
+        skip += ["gemini-test", "cursor-test"]
         os.environ["CCA_SANITIZE"] = "1"
         # Objects from a normal build were compiled with /MT; the sanitizer needs /MD.
         obj = os.path.join(ROOT, "build", "obj")

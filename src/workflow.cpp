@@ -63,6 +63,7 @@ Json workflowView(const Json& context, const Json& state, const WorkflowRun& run
     } else if (context["kind"].str() == "group") {
         members = {"claude", "codex"};
         if (contains(context["members"], "gemini")) members.push_back("gemini");
+        if (contains(context["members"], "cursor")) members.push_back("cursor");
         for (const char* id : {"local1", "local2"}) {
             if (contains(context["members"], id) || contains(state["typing"], id)) members.push_back(id);
         }

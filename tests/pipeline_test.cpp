@@ -150,6 +150,47 @@ int cliGemini() {
     reply(J({{"type", "result"}, {"status", "success"}, {"stats", J({{"input_tokens", 31}, {"output_tokens", 7}})}}));
     return 0;
 }
+// Cursor Agent CLI stream-json: the tested program runs as node.exe with a fixture index.js path in argv[1].
+int cliCursor() {
+    std::string input, line;
+    while (std::getline(std::cin, line)) input += line + "\n";
+    util::writeFileAtomic(util::joinPath(util::appDataDir(), L"cursor-input.txt"), input);
+    wchar_t hold[2]{};
+    if (GetEnvironmentVariableW(L"CCA_TEST_CURSOR_HOLD", hold, 2) > 0) Sleep(30000);
+    std::string data;
+    bool changed = !util::readFile(L"cursor-result.txt", data);
+    if (changed) util::writeFileAtomic(L"cursor-result.txt", "Cursor reviewed and fixed\n");
+    reply(J({{"type", "system"},
+             {"subtype", "init"},
+             {"apiKeySource", "login"},
+             {"session_id", "pipeline-cursor"},
+             {"model", "Grok Fixture"}}));
+    // A PASS needs a host-visible check: the read must surface as tool evidence, as Gemini's does.
+    const Json readArgs = J({{"path", "cli-result.txt"}});
+    reply(J({{"type", "tool_call"},
+             {"subtype", "started"},
+             {"call_id", "read"},
+             {"tool_call", J({{"readToolCall", J({{"args", readArgs}})}})}}));
+    reply(J({{"type", "tool_call"},
+             {"subtype", "completed"},
+             {"call_id", "read"},
+             {"tool_call", J({{"readToolCall", J({{"args", readArgs},
+                                                  {"result", J({{"success", J({{"content", "GPT fixed"}})}})}})}})}}));
+    const std::string text = changed ? "Cursor fixed a real file.\nREVIEW: NEEDS_FIX"
+                                     : "Cursor verified the current revision.\nREVIEW: PASS";
+    reply(J({{"type", "assistant"},
+             {"message",
+              J({{"role", "assistant"}, {"content", Json(Json::Array{J({{"type", "text"}, {"text", text}})})}})}}));
+    reply(
+        J({{"type", "result"},
+           {"subtype", "success"},
+           {"is_error", false},
+           {"duration_ms", 5},
+           {"result", text},
+           {"session_id", "pipeline-cursor"},
+           {"usage", J({{"inputTokens", 41}, {"outputTokens", 9}, {"cacheReadTokens", 0}, {"cacheWriteTokens", 0}})}}));
+    return 0;
+}
 }  // namespace
 
 struct PipelineTestAccess {
@@ -539,6 +580,68 @@ struct PipelineTestAccess {
                   "an all-exhausted pipeline force-stops with a resumable record");
             restarted.quotaUntil_.clear();
         }
+        {
+            // Cursor as the second file-editing reviewer, with a model from the catalogue it reported.
+            wchar_t self[MAX_PATH * 4];
+            GetModuleFileNameW(nullptr, self, MAX_PATH * 4);
+            restarted.cursorLaunchOverride_ = {self, util::joinPath(util::exeDir(), L"fixture-cursor\\index.js"),
+                                               L"fixture"};
+            restarted.cursorStatus_.state = "ok";
+            restarted.cursorModels_ = Json::array();
+            restarted.cursorModels_.push(J({{"value", "grok-fixture"}, {"displayName", "Grok Fixture"}}));
+            Json nodes = c->pipeline["nodes"];
+            nodes.items().back() = J({{"id", "cursor-second-reviewer"},
+                                      {"name", "Cursor"},
+                                      {"backend", "cursor"},
+                                      {"role", "review"},
+                                      {"model", "grok-unlisted"}});
+            c->pipeline = J({{"nodes", nodes}, {"maxCycles", 3}, {"requireTests", false}, {"routing", "full"}});
+            restarted.groupStart(*c, "a Cursor node may only run a model Cursor reported");
+            check(until([&] { return !c->group.active || c->group.paused; }), "unlisted Cursor model stops the run");
+            check(c->group.paused || c->task["status"].str() != "done", "an unlisted Cursor model never runs");
+            if (c->group.active) restarted.groupStop(*c);
+            until([&] { return !c->group.active; });
+            c->pipeline["nodes"].items().back()["model"] = "grok-fixture";
+            restarted.groupStart(*c, "Claude writes, Codex reviews, Cursor reviews and edits files");
+            check(until([&] { return !c->group.active || c->group.paused; }), "Cursor pipeline terminates");
+            check(c->task["status"].str() == "done", "Claude, GPT and Cursor reach consensus on real revisions");
+            if (c->task["status"].str() != "done") {
+                std::printf("  status=%s paused=%d reason=%s\n", c->task["status"].str().c_str(), (int)c->group.paused,
+                            c->group.pauseReason.c_str());
+                for (size_t i = c->messages.size() > 6 ? c->messages.size() - 6 : 0; i < c->messages.size(); ++i)
+                    std::printf("  %s\n", c->messages[i].dump().substr(0, 500).c_str());
+            }
+            std::string cursorFile;
+            util::readFile(util::joinPath(project, L"cursor-result.txt"), cursorFile);
+            check(cursorFile == "Cursor reviewed and fixed\n", "the Cursor reviewer changes a real file");
+            check(c->task["sessions"]["cursor-second-reviewer"].str() == "pipeline-cursor",
+                  "the Cursor chat id persists separately in the task");
+            check(restarted.usage_["cursor"]["session"]["inputTokens"].i64() >= 41, "Cursor usage is its own");
+            bool cursorAuthor = false;
+            for (const auto& message : c->messages)
+                cursorAuthor |= message["author"].str() == "cursor" && message["billing"].str() == "cursor-account";
+            check(cursorAuthor, "Cursor identity and billing are visible in messages");
+            std::string received;
+            check(util::readFile(util::joinPath(util::appDataDir(), L"cursor-input.txt"), received) &&
+                      received.find("多代理流程") != std::string::npos,
+                  "the pipeline role reaches the Cursor subprocess stdin");
+            SetEnvironmentVariableW(L"CCA_TEST_CURSOR_HOLD", L"1");
+            restarted.groupStart(*c, "interrupt Cursor without changing the GPT message");
+            check(
+                until([&] { return c->cursor && c->cursor->busy() && !c->activeMsg[(int)AgentKind::Cursor].empty(); }),
+                "Cursor has its own live message slot before interruption");
+            const auto cursorMessage = c->activeMsg[(int)AgentKind::Cursor];
+            c->activeMsg[(int)AgentKind::Codex] = "codex-sentinel";
+            restarted.groupStop(*c);
+            check(until([&] { return !c->group.active; }) && c->task["status"].str() == "stopped",
+                  "stopping Cursor terminates the pipeline and saves stopped status");
+            const auto stopped = restarted.findMsg(*c, cursorMessage);
+            check(stopped && (*stopped)["status"].str() == "interrupted" &&
+                      c->activeMsg[(int)AgentKind::Codex] == "codex-sentinel",
+                  "interruption closes Cursor's message without touching Codex's slot");
+            c->activeMsg[(int)AgentKind::Codex].clear();
+            SetEnvironmentVariableW(L"CCA_TEST_CURSOR_HOLD", nullptr);
+        }
         Conversation bridge;
         bridge.kind = "group";
         bridge.group.pipeline = true;
@@ -573,6 +676,7 @@ struct PipelineTestAccess {
 };
 
 int main(int argc, char** argv) {
+    if (argc > 1 && util::endsWith(std::string(argv[1]), "index.js")) return cliCursor();
     if (argc > 1 && std::string(argv[1]) == "--output-format") return cliGemini();
     if (argc > 1 && std::string(argv[1]) == "app-server") return cliCodex();
     if (argc > 1 && std::string(argv[1]) == "-p") return cliClaude();
@@ -581,6 +685,8 @@ int main(int argc, char** argv) {
     util::ensureDir(dir);
     util::ensureDir(project);
     SetEnvironmentVariableW(L"CCA_DATA_DIR", util::joinPath(dir, L"data").c_str());
+    // The user's own Cursor approval settings must not decide this test.
+    SetEnvironmentVariableW(L"CURSOR_CONFIG_DIR", util::joinPath(dir, L"cursor-config").c_str());
     check(util::localAppDataDir() == util::joinPath(util::appDataDir(), L"local"),
           "test cache and snapshots stay inside the isolated data directory");
     util::writeFileAtomic(util::joinPath(project, L"result.txt"), "before\n");

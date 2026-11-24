@@ -13,6 +13,7 @@
 #include "agent.hpp"
 #include "claude_agent.hpp"
 #include "codex_agent.hpp"
+#include "cursor_agent.hpp"
 #include "gemini_agent.hpp"
 #include "guard.hpp"
 #include "json.hpp"
@@ -53,7 +54,7 @@ struct GroupRun {
     std::vector<std::string> notesFrom;  // local reviewers whose notes came with the current prompt
     std::string pauseKind;               // "guard" when paused over a reply that failed the checks
     std::string guardMsg;                // that reply, for "accept and continue"
-    // Members are rotated in order (lead, partner, Gemini); quota-exhausted ones are skipped for this run.
+    // Members are rotated in order (lead, partner, Gemini, Cursor); quota-exhausted ones are skipped for this run.
     std::set<std::string> skipped;
     std::set<std::string> approvals;  // members who accepted the code since its latest change
     std::string lastChanger;          // author of the latest change; implicitly agrees with it
@@ -62,13 +63,16 @@ struct GroupRun {
 
 struct Conversation {
     std::string id;
-    std::string kind;  // claude | codex | gemini | group
+    std::string kind;  // claude | codex | gemini | cursor | group
     std::string name;
     std::wstring cwd;
     std::string permission = "edit";  // plan | ask | edit | bypass
     std::string claudeModel, claudeEffort, codexModel, codexEffort;
-    std::string claudeSession, codexThread, geminiSession;
+    std::string claudeSession, codexThread, geminiSession, cursorSession;
+    std::string cursorModel;    // picked from the catalogue `agent models` reports; never guessed
     bool geminiMember = false;  // groups: Gemini joins the review rotation after Claude and GPT
+    bool cursorMember = false;  // groups: Cursor joins the review rotation after Gemini
+    bool extraReviewers() const { return geminiMember || cursorMember; }
     Json adaptive =
         J({{"claude", J({{"model", true}, {"effort", true}})}, {"codex", J({{"model", true}, {"effort", true}})}});
     Json routes = Json::object();
@@ -87,10 +91,10 @@ struct Conversation {
     std::shared_ptr<ClaudeSession> claude;
     std::shared_ptr<CodexThread> codex;
     std::shared_ptr<LocalSession> local[2];
-    std::string activeMsg[5];  // Claude, Codex, two local slots, Gemini.
-    bool thinking[5] = {};
-    int guardTry[5] = {};      // Send-backs for the reply being checked.
-    bool guardResend[5] = {};  // Preserve the counter on a send-back.
+    std::string activeMsg[6];  // Claude, Codex, two local slots, Gemini, Cursor (AgentKind order).
+    bool thinking[6] = {};
+    int guardTry[6] = {};      // Send-backs for the reply being checked.
+    bool guardResend[6] = {};  // Preserve the counter on a send-back.
     std::string preparing;     // agent whose turn waits for the checkpoint to finish
     std::string pendingSnapshot;
     GroupRun group;
@@ -106,6 +110,8 @@ struct Conversation {
     std::shared_ptr<RuntimeSession> worker;
     std::shared_ptr<GeminiSession> gemini;
     std::map<std::string, std::shared_ptr<GeminiSession>> pipelineGemini;
+    std::shared_ptr<CursorSession> cursor;
+    std::map<std::string, std::shared_ptr<CursorSession>> pipelineCursor;
     std::shared_ptr<void> workspaceLease;
     std::set<std::string> dirtyMsgs;
     bool stateDirty = false;
@@ -169,6 +175,7 @@ public:
 private:
     friend struct AppearanceTestAccess;
     friend struct GeminiTestAccess;
+    friend struct CursorTestAccess;
     bool handleTheme(const Json& message);
     bool handleRouting(const Json& message);
     bool routeConfig(Conversation& c, AgentKind kind, AgentConfig& config, const std::string& request,
@@ -354,6 +361,9 @@ private:
     void checkGemini();
     void loginGemini();
     std::wstring resolveGeminiExe() const;
+    void checkCursor();
+    void loginCursor();
+    CursorLaunch resolveCursor() const;
     void sendAuth();
     std::wstring resolveClaudeExe() const;
     std::wstring resolveCodexExe() const;
@@ -401,6 +411,7 @@ private:
     void groupSkip(Conversation& c, AgentKind k, const std::string& reason);
     void groupQuotaStop(Conversation& c, const std::string& detail);
     GeminiSession& geminiFor(Conversation& c);
+    CursorSession& cursorFor(Conversation& c);
 
     // ---- plugins and MCP servers (plugins.cpp)
     void listPlugins(const std::string& agent, bool refresh);
@@ -421,6 +432,12 @@ private:
     bool geminiChecking_ = false;
     unsigned geminiGeneration_ = 0;
     long long lastGeminiUsage_ = 0;
+    AgentStatus cursorStatus_;
+    std::unique_ptr<ChildProcess> cursorLogin_;
+    bool cursorChecking_ = false;
+    unsigned cursorGeneration_ = 0;
+    Json cursorModels_ = Json::array();
+    CursorLaunch cursorLaunchOverride_;  // tests only: a fixture program in place of the installed CLI
     std::shared_ptr<CodexServer> codexServer_;
     std::shared_ptr<ClaudeSession> claudeProbe_;
     std::unique_ptr<ChildProcess> claudeLogin_;

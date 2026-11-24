@@ -191,6 +191,7 @@ const Command kCommands[] = {
     {"/takeover", "", "停止 Claude 並交接給 GPT"},
     {"/fallback", "[on|off]", "額度耗盡的成員自動跳過；私訊由 GPT 接手 Claude"},
     {"/gemini", "[on|off]", "邀請 Gemini 擔任群組的第三位審查者"},
+    {"/cursor", "[on|off]", "邀請 Cursor（可用 Grok 等模型）擔任群組的審查者"},
     {"/stop", "", "停止 AI（也可以按 Esc）"},
     {"/continue", "", "協作暫停時繼續（規範審查暫停時是再退回一次）"},
     {"/accept", "", "規範審查暫停時接受這則回覆並繼續"},
@@ -212,6 +213,7 @@ const Command kCommands[] = {
     {"/clear", "", "清除這個對話（AI 也會忘記）"},
     {"/status", "", "登入狀態、用量和記憶體"},
     {"/gemini-login", "", "啟動官方 Gemini CLI 的 Google 帳號登入"},
+    {"/cursor-login", "", "啟動官方 Cursor CLI 的帳號登入"},
     {"/resume", "", "接續 CCA 關閉時中斷的群組任務"},
     {"/claude-usage", "[on|off]", "即時查詢 Claude 額度（會讀取 Claude Code 的登入權杖）"},
     {"/theme", "[ID]", "列出或切換已內建的介面主題"},
@@ -358,7 +360,7 @@ private:
 
     // commands with several steps
     void pickAgent(const std::string& title, std::function<void(const std::string&)> then, bool withLocals = false,
-                   bool withUser = false, bool withGemini = false);
+                   bool withUser = false, bool withGemini = false, bool withCursor = false);
     void pickModel(const std::string& agent);
     void pickEffort(const std::string& agent);
     void pickPermission();
@@ -473,13 +475,15 @@ void Cli::onHost(const std::string& json) {
     } else if (type == "auth") {
         auth_ = m;
         std::string key;
-        for (const char* a : {"claude", "codex", "gemini"}) key += std::string(a) + "=" + m[a]["state"].str() + ";";
+        for (const char* a : {"claude", "codex", "gemini", "cursor"})
+            key += std::string(a) + "=" + m[a]["state"].str() + ";";
         if (key != authShown_ && m["claude"]["state"].str() != "checking" && m["codex"]["state"].str() != "checking") {
             authShown_ = key;
-            for (const char* a : {"claude", "codex", "gemini"}) {
+            for (const char* a : {"claude", "codex", "gemini", "cursor"}) {
                 const Json& s = m[a];
                 std::string cli = std::string(a) == "claude"   ? "Claude Code"
                                   : std::string(a) == "gemini" ? "Gemini CLI"
+                                  : std::string(a) == "cursor" ? "Cursor CLI"
                                                                : "Codex";
                 if (s["state"].str() == "ok" || s["state"].str() == "checking" || s["state"].str() == "loggingIn" ||
                     s.isNull())
@@ -490,6 +494,10 @@ void Cli::onHost(const std::string& json) {
                          : s["state"].str() == "retired" ? "說明：https://geminicli.com/docs/resources/"
                                                            "quota-and-pricing/ ；改用受支援帳號可執行 /gemini-login"
                                                          : "登入：/gemini-login，完成後輸入 /status 重新檢查");
+                } else if (std::string(a) == "cursor") {
+                    note(s["state"].str() == "missing"
+                             ? "安裝：在 PowerShell 執行 irm 'https://cursor.com/install?win32=true' | iex"
+                             : "登入：/cursor-login，完成後輸入 /status 重新檢查");
                 } else if (s["state"].str() == "missing") {
                     note(std::string(a) == "claude" ? "安裝：在 PowerShell 執行 irm https://claude.ai/install.ps1 | iex"
                                                     : "安裝：先裝 Node.js，再執行 npm install -g @openai/codex");
@@ -760,7 +768,11 @@ const Json& Cli::state() const {
 std::string Cli::name(const std::string& who) const {
     if (who == "user") return winUser_.empty() ? "你" : winUser_;
     if (who == "local1" || who == "local2") return who == "local1" ? "本地模型 1" : "本地模型 2";
-    return who == "claude" ? "Claude" : who == "codex" ? "GPT" : who == "gemini" ? "Gemini" : who;
+    return who == "claude"   ? "Claude"
+           : who == "codex"  ? "GPT"
+           : who == "gemini" ? "Gemini"
+           : who == "cursor" ? "Cursor"
+                             : who;
 }
 
 std::string Cli::convTitle(const Json& c) const {
@@ -811,6 +823,7 @@ void Cli::printHeader() {
     text.push_back(who("claude", "Claude Code", "可切換主刀"));
     text.push_back(who("codex", "Codex", "可接手工作"));
     text.push_back(who("gemini", "Gemini CLI", "多代理審查"));
+    text.push_back(who("cursor", "Cursor CLI", "Grok 等模型"));
     text.push_back({{tui::muted(), "你是 "},
                     {Style(), name("user")},
                     {tui::muted(), " · 資料在 " + shortPath(util::narrow(util::appDataDir()))}});
@@ -1794,13 +1807,14 @@ void Cli::submit() {
 // ------------------------------------------------------------ commands
 
 void Cli::pickAgent(const std::string& title, std::function<void(const std::string&)> then, bool withLocals,
-                    bool withUser, bool withGemini) {
+                    bool withUser, bool withGemini, bool withCursor) {
     Picker p;
     p.title = title;
     if (withUser) p.items.push_back({name("user"), "你", "user", C::kBrand});
     p.items.push_back({name("claude"), "Claude Code", "claude", C::kClaude});
     p.items.push_back({name("codex"), "Codex", "codex", C::kGpt});
     if (withGemini) p.items.push_back({name("gemini"), "Gemini CLI", "gemini", tui::agentColor("gemini")});
+    if (withCursor) p.items.push_back({name("cursor"), "Cursor CLI", "cursor", tui::agentColor("cursor")});
     if (withLocals) {
         p.items.push_back({name("local1"), "本地審查員 1", "local1", C::kLocal1});
         p.items.push_back({name("local2"), "本地審查員 2", "local2", C::kLocal2});
@@ -1815,6 +1829,32 @@ void Cli::pickAgent(const std::string& title, std::function<void(const std::stri
 void Cli::pickModel(const std::string& agent) {
     const Json* c = conv();
     if (!c) return;
+    if (agent == "cursor") {
+        // Only ids the Cursor CLI reported for this account; Grok first, and typing filters the long list.
+        std::string cur = (*c)["cursorModel"].str();
+        Picker p;
+        p.title = name(agent) + " 的模型（可輸入文字篩選）";
+        for (bool grok : {true, false})
+            for (const auto& m : models_["cursor"].items()) {
+                std::string v = m["value"].str();
+                if ((toLowerAscii(v).find("grok") != std::string::npos) != grok) continue;
+                Item it{m["displayName"].str(v), v, v};
+                it.checkable = true;
+                it.checked = v == cur;
+                p.items.push_back(it);
+            }
+        if (p.items.empty()) {
+            note("還沒拿到 Cursor 的模型清單；登入後輸入 /status 重新檢查。", C::kWarn, "!");
+            return;
+        }
+        p.onPick = [this](Item& it) {
+            ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"cursorModel", it.value}})}}));
+            toast(name("cursor") + " 改用 " + it.label, "ok");
+            return false;
+        };
+        openPicker(std::move(p));
+        return;
+    }
     Json list = models_[agent];
     if (agent == "claude" && list.size() == 0) {
         list = Json::array();
@@ -2153,12 +2193,13 @@ void Cli::gitCommand(const std::string& args) {
 
 void Cli::showStatus() {
     std::vector<Line> out = {{}, {{tui::fg(C::kBrand, true), std::string("  ") + CCA_PRODUCT + " CLI " + version_}}};
-    for (const char* a : {"claude", "codex", "gemini"}) {
+    for (const char* a : {"claude", "codex", "gemini", "cursor"}) {
         const Json& s = auth_[a];
         std::string st = s["state"].str("checking");
         bool ok = st == "ok";
         std::string label = std::string(a) == "claude"   ? "Claude Code"
                             : std::string(a) == "gemini" ? "Gemini CLI"
+                            : std::string(a) == "cursor" ? "Cursor CLI"
                                                          : "Codex";
         Line l = {{tui::fg(ok ? C::kOk : C::kWarn), ok ? "  ✓ " : "  ! "}, {Style(), label}};
         if (!s["version"].str().empty()) l.push_back({tui::muted(), " " + s["version"].str()});
@@ -2176,6 +2217,9 @@ void Cli::showStatus() {
             }
             if (!quota["error"].str().empty()) out.push_back({{tui::muted(), "    " + quota["error"].str()}});
         }
+        if (std::string(a) == "cursor" && ok)
+            out.push_back({{tui::muted(), "    可用模型 " + std::to_string(models_["cursor"].size()) +
+                                              " 個；Cursor 不提供剩餘額度，CCA 不推算"}});
         const Json& sess = usage_[a]["session"];
         if (sess["turns"].i64() > 0) {
             out.push_back({{tui::muted(), "    這次開啟後：" + std::to_string(sess["turns"].i64()) + " 次回覆 · 輸入 " +
@@ -2199,8 +2243,8 @@ void Cli::showStatus() {
 }
 
 void Cli::runCommand(const std::string& cmd, const std::string& args) {
-    if (cmd == "/gemini-login") {
-        ui(J({{"type", "auth.login"}, {"agent", "gemini"}}));
+    if (cmd == "/gemini-login" || cmd == "/cursor-login") {
+        ui(J({{"type", "auth.login"}, {"agent", cmd == "/gemini-login" ? "gemini" : "cursor"}}));
         return;
     }
     const Json* c = conv();
@@ -2519,8 +2563,15 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         note("Gemini CLI 沒有回報模型目錄與思考程度，CCA 使用 CLI 預設值，不猜測模型名稱。");
         return;
     }
+    if (cmd == "/effort" && (*c)["kind"].str() == "cursor") {
+        note("Cursor 的思考程度包含在模型名稱裡（例如 grok-4.7-high），請用 /model 選擇。");
+        return;
+    }
     if (cmd == "/model") {
-        if (group) pickAgent("要改誰的模型？", [this](const std::string& a) { pickModel(a); });
+        if (group)
+            pickAgent(
+                "要改誰的模型？", [this](const std::string& a) { pickModel(a); }, false, false, false,
+                (*c)["cursorMember"].boolean());
         else pickModel((*c)["kind"].str());
         return;
     }
@@ -2538,6 +2589,18 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
         bool on = args == "on" || (args.empty() && !(*c)["geminiMember"].boolean());
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"geminiMember", on}})}}));
         toast(on ? "Gemini 加入群組，擔任第三位審查者；額度不足或帳號無法使用時會跳過" : "Gemini 已離開群組");
+        return;
+    }
+    if (cmd == "/cursor") {
+        if (!needGroup()) return;
+        if (!args.empty() && args != "on" && args != "off") {
+            toast("用法：/cursor on 或 /cursor off", "error");
+            return;
+        }
+        bool on = args == "on" || (args.empty() && !(*c)["cursorMember"].boolean());
+        ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"cursorMember", on}})}}));
+        toast(on ? "Cursor 加入群組擔任審查者；用 /model 選 Cursor 的模型（例如 Grok），權限需為自動編輯以上"
+                 : "Cursor 已離開群組");
         return;
     }
     if (cmd == "/permission" || cmd == "/mode") {
@@ -2823,6 +2886,10 @@ void Cli::runCommand(const std::string& cmd, const std::string& args) {
             toast("日常模式只能在私訊用", "error");
             return;
         }
+        if ((*c)["kind"].str() == "cursor") {
+            toast("Cursor CLI 無介面執行時不能逐項詢問，不提供日常模式", "error");
+            return;
+        }
         bool on = !(*c)["daily"].boolean();
         ui(J({{"type", "conv.settings"}, {"id", current_}, {"settings", J({{"daily", on}})}}));
         toast(on ? "日常模式：改用最省額度的模型，改檔案或執行指令前會先問你" : "回到工作模式", "ok");
@@ -3023,8 +3090,9 @@ int Cli::run(int argc, wchar_t** argv) {
         std::string a = util::narrow(argv[i]);
         if (a == "--help" || a == "-h" || a == "/?") {
             say(std::string(CCA_PRODUCT) + " CLI " + CCA_VERSION +
-                "\n\n用法：ChatClaudeAgent-CLI [claude | gpt | group | 群組名稱]\n\n"
-                "在終端機裡和 Claude、GPT 對話，或讓兩個一起寫程式。對話和桌面版共用，兩邊不能同時開著。\n"
+                "\n\n用法：ChatClaudeAgent-CLI [claude | gpt | gemini | cursor | group | 群組名稱]\n\n"
+                "在終端機裡和 Claude、GPT、Gemini 或 Cursor "
+                "對話，或讓它們一起寫程式。對話和桌面版共用，兩邊不能同時開著。\n"
                 "開啟後輸入 /help 看所有指令。\n");
             return 0;
         }
@@ -3091,7 +3159,7 @@ int Cli::run(int argc, wchar_t** argv) {
     for (const auto& c : convs_.items()) {
         std::string kind = c["kind"].str();
         if ((w == "claude" && kind == "claude") || ((w == "gpt" || w == "codex") && kind == "codex") ||
-            (w == "gemini" && kind == "gemini"))
+            (w == "gemini" && kind == "gemini") || ((w == "cursor" || w == "grok") && kind == "cursor"))
             pick = c["id"].str();
         if (pick.empty() && !w.empty() && kind == "group" && (w == "group" || toLowerAscii(c["name"].str()) == w))
             pick = c["id"].str();

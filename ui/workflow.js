@@ -5,9 +5,11 @@
   else root.CCAWorkflow = api;
 })(typeof window === 'object' ? window : globalThis, function () {
   'use strict';
-  const COLORS = { claude: '#e8946f', codex: '#3bc495', gemini: '#88b6ff', local1: '#f47fbd', local2: '#b8a6f5' };
-  const VENDORS = { claude: 'Claude', codex: 'GPT', gemini: 'Gemini', local1: '本地 1', local2: '本地 2' };
-  const CENTERS = { claude: 185, codex: 815, gemini: 500, local1: 405, local2: 595 };
+  const COLORS = { claude: '#e8946f', codex: '#3bc495', gemini: '#88b6ff', cursor: '#c3ccd6', local1: '#f47fbd', local2: '#b8a6f5' };
+  const VENDORS = { claude: 'Claude', codex: 'GPT', gemini: 'Gemini', cursor: 'Cursor', local1: '本地 1', local2: '本地 2' };
+  const CENTERS = { claude: 185, codex: 815, gemini: 500, cursor: 815, local1: 405, local2: 595 };
+  // Cursor and the local reviewers sit on the lower row, under the bus between Claude and GPT.
+  const lower = id => id.startsWith('local') || id === 'cursor';
   const ACTIVE = new Set(['thinking', 'writing', 'reviewing', 'tool', 'preparing', 'loading', 'retry']);
   function edgePoints(from, to, positions = null) {
     if (positions) {
@@ -17,12 +19,11 @@
       return [[a.x, a.y + 30], [a.x, (a.y + b.y) / 2], [b.x, (a.y + b.y) / 2], [b.x, b.y - 30]];
     }
     if (!(from in CENTERS) || !(to in CENTERS) || from === to) return [];
-    const local = id => id.startsWith('local');
-    if (!local(from) && !local(to)) {
+    if (!lower(from) && !lower(to)) {
       const direction = CENTERS[from] < CENTERS[to] ? 1 : -1;
       return [[CENTERS[from] + 105 * direction, 42], [CENTERS[to] - 105 * direction, 42]];
     }
-    const startY = local(from) ? 100 : 72, endY = local(to) ? 100 : 72;
+    const startY = lower(from) ? 100 : 72, endY = lower(to) ? 100 : 72;
     return [[CENTERS[from], startY], [CENTERS[from], 85], [CENTERS[to], 85], [CENTERS[to], endY]];
   }
   function pipelineLayout(nodes) {
@@ -154,11 +155,11 @@
           this.pipelineWires.append(svg('path', { d: points.map((p, n) => (n ? 'L' : 'M') + p.join(' ')).join(' '), class: 'wf-wire' }));
         });
       }
-      const hasLocals = !pipeline && (flow.nodes || []).some(n => n.id.startsWith('local'));
+      const hasLocals = !pipeline && (flow.nodes || []).some(n => lower(n.id));
       this.root.classList.toggle('wf-with-locals', hasLocals);
       this.bus.style.display = hasLocals ? '' : 'none';
       const busPath = hasLocals ? 'M185 72 V85 H815 V72' + (flow.nodes || [])
-        .filter(n => n.id === 'local1' || n.id === 'local2').map(n => ` M${CENTERS[n.id]} 85 V100`).join('') : '';
+        .filter(n => lower(n.id)).map(n => ` M${CENTERS[n.id]} 85 V100`).join('') : '';
       if (this.bus.getAttribute('d') !== busPath) this.bus.setAttribute('d', busPath);
       this.wires.setAttribute('viewBox', '0 0 1000 ' + (layout ? layout.height : hasLocals ? 158 : 88));
       text(this.status, flow.label || '等待工作');

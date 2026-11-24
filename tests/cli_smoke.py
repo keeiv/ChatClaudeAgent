@@ -32,6 +32,8 @@ def run_case(root, exe, name, script, conversation="claude", flow=False, usage=N
     settings = {
         "claudePath": str(ROOT / "tests/fake_claude.cmd"),
         "codexPath": str(ROOT / "build/takeover_test.exe"),
+        # A folder without the Cursor CLI: the account check reports "missing" instead of running a real install.
+        "cursorPath": str(data / "no-cursor-cli"),
         "humanize": {"enabled": True},
         # The fixture backends answer tersely and never read files; the compliance checks would send
         # every reply back. They are covered by build.bat test and takeover-test instead.
@@ -369,6 +371,45 @@ key enter
     require(any(c["kind"] == "gemini" for c in stored_conversations), "missing Gemini direct message")
     require((member_case / "data/installers").is_dir(), "local update folder was not created automatically")
 
+    # Cursor joins the rotation from the CLI too; without an install the account note says how to get it.
+    cursor_case, _, _ = run_case(root, exe, "cursor-member", """until /help 15000
+wait 1200
+type /cursor on
+key enter
+until Cursor 加入群組 10000
+wait 300
+type /status
+key enter
+wait 400
+until 記憶體 10000
+snap status
+type /exit
+key enter
+""", "group")
+    stored_conversations = json.loads((cursor_case / "data/conversations.json").read_text(encoding="utf-8"))
+    require(any(c["kind"] == "group" and c.get("cursorMember") for c in stored_conversations),
+            "CLI /cursor on did not persist Cursor group membership")
+    require(any(c["kind"] == "cursor" for c in stored_conversations), "missing Cursor direct message")
+
+    # The Cursor direct message opens by name; without the CLI it explains instead of guessing a model.
+    cursor_dm, _, cursor_messages = run_case(root, exe, "cursor-dm", """until /help 15000
+wait 1200
+type /model
+key enter
+until 還沒拿到 Cursor 的模型清單 10000
+wait 300
+type hello
+key enter
+wait 400
+until 找不到 Cursor CLI 10000
+snap refused
+type /exit
+key enter
+""", "cursor")
+    require(not any(m.get("author") == "cursor" for m in cursor_messages), "a Cursor turn started without the CLI")
+    require(any(m.get("kind") == "error" and "找不到 Cursor CLI" in m.get("text", "") for m in cursor_messages),
+            "the refused Cursor message does not say why")
+
     # The reviewer test guard is configured per group; the host stores the command and refuses unusable ones.
     guard_case, _, _ = run_case(root, exe, "test-guard", """until /help 15000
 wait 1200
@@ -508,7 +549,7 @@ key enter
         holder_log.close()
     require(holder.returncode == 0, "lock holder did not close cleanly")
     print("PASS shared data lock across processes")
-    print("17 CLI smoke scenarios passed")
+    print("19 CLI smoke scenarios passed")
 
 
 if __name__ == "__main__":

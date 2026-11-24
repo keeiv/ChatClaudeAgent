@@ -44,6 +44,7 @@ def catalogue():
                 tokens["brand-ink"] = p["ink"]
             if light:
                 tokens.update({"gemini": "#6b4fc8", "gemini-name": "#6b4fc8", "gemini-rgb": "107, 79, 200"})
+                tokens.update({"cursor": "#6b7685", "cursor-name": "#3f4955", "cursor-rgb": "107, 118, 133"})
                 tokens.update({"claude": "#99482f", "claude-name": "#99482f", "codex": "#146948",
                                "codex-name": "#146948", "local1": "#ad3975", "local1-name": "#9a2864",
                                "local2": "#8a5a14", "local2-name": "#7a4e0f", "green": "#277743",

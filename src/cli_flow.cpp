@@ -99,7 +99,7 @@ std::vector<Line> renderWorkflow(const Json& flow, const Names& names, int cols,
         }
         return out;
     }
-    if (compact || cols < 68 || nodes.count("gemini")) {
+    if (compact || cols < 68 || nodes.count("gemini") || nodes.count("cursor")) {
         std::vector<Line> out = {clip(head, cols)};
         auto members = [&](std::initializer_list<const char*> ids, bool readOnly) {
             const std::string prefix = readOnly && cols >= 48 ? "  唯讀 " : "  ";
@@ -121,7 +121,7 @@ std::vector<Line> renderWorkflow(const Json& flow, const Names& names, int cols,
             }
             if (row.size() > 1) out.push_back(row);
         };
-        members({"claude", "codex", "gemini"}, false);
+        members({"claude", "codex", "gemini", "cursor"}, false);
         if (locals) members({"local1", "local2"}, true);
         return out;
     }

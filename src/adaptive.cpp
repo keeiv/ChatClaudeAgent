@@ -22,7 +22,7 @@ std::string previousTask(const Conversation& c, const std::string& current) {
 
 bool App::routeConfig(Conversation& c, AgentKind kind, AgentConfig& config, const std::string& request, bool fixedModel,
                       bool fixedEffort) {
-    if (isLocal(kind) || kind == AgentKind::Gemini || c.daily) return true;
+    if (isLocal(kind) || isHeadlessCli(kind) || c.daily) return true;
     const auto agent = agentName(kind);
     bool deepest = false;
     Json choice = chooseRoute(request, kind == AgentKind::Claude ? claudeModels_ : codexModels_, config.model,

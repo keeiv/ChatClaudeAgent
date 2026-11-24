@@ -5,5 +5,5 @@
 #define CCA_PRODUCT "ChatClaudeAgent"
 #define CCA_EDITION ""
 #define CCA_EDITION_NAME ""
-#define CCA_VERSION "1.0.2-luna"
-#define CCA_VERSION_NUM 1, 0, 2, 2
+#define CCA_VERSION "1.0.2-terra"
+#define CCA_VERSION_NUM 1, 0, 2, 3
